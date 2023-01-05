@@ -1,0 +1,20 @@
+% latex table generated in R 4.2.2 by xtable 1.8-4 package
+% Thu Jan  5 10:45:01 2023
+\begin{table}[h]
+\centering
+\begin{tabular}{lcccccc}
+ Variable & Mean & SD & Min & Max & SD within & SD across \\ 
+  \hline
+Precipitation (cl) & 63.48 & 55.17 & 4.72 & 345.15 & 18.26 & 49.28 \\ 
+  Avg Temperature (ºC) & 21.34 & 3.49 & 14.13 & 29.56 & 0.55 & 3.21 \\ 
+  Max Temperature (ºC) & 26.77 & 3.51 & 18.56 & 34.50 & 0.83 & 3.27 \\ 
+  Min Temperature (ºC) & 15.88 & 3.76 & 8.76 & 24.52 & 0.54 & 3.33 \\ 
+   \hline
+\hline
+Communities & 88 & 88 & 88 & 88 & 88 & 88 \\ 
+  Observations & 968 & 968 & 968 & 968 & 968 & 968 \\ 
+   \hline
+\end{tabular}
+\caption{Summary Statistics - Weather} 
+\label{desc_stats_weather}
+\end{table}

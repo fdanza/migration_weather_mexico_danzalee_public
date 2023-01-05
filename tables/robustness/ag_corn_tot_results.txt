@@ -1,0 +1,22 @@
+\begin{tabular}{lccc}
+\tabularnewline\midrule\midrule
+Dependent Variable:&\multicolumn{3}{c}{Log (Corn Prod) - Ton}\\
+Model:&(1) & (2) & (3)\\
+\midrule \emph{Variables}&   &   &  \\
+Dev Precipiation (cl) & 0.0270$^{***}$ &    &   \\
+  &(0.0089) &    &   \\
+Dev Max Temp (ºC) &    & -0.0602$^{**}$ &   \\
+  &   & (0.0298) &   \\
+Dev Min Temp (ºC) &    &    & -0.0352\\
+  &   &    & (0.0349)\\
+\midrule \emph{Fixed-effects}&   &   &  \\
+id & Yes & Yes & Yes\\
+year & Yes & Yes & Yes\\
+\midrule \emph{Fit statistics}&  & & \\
+Observations & 1,263&1,263&1,263\\
+Adjusted R$^2$ & 0.89181&0.89097&0.89029\\
+\midrule\midrule\multicolumn{4}{l}{\emph{Clustered (id) standard-errors in parentheses}}\\
+\multicolumn{4}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+
+

@@ -1,0 +1,494 @@
+---
+title:    'Agricultural Production'
+author:   "Facundo Danza & Eungik Lee"
+subtitle: "Plots and Regressions"
+---
+
+# Pre-analysis
+
+First, we clean the R-environment:
+```{r}
+rm(list = ls())
+gc()
+```
+
+Second, we load (and install) the needed packages:
+```{r}
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(data.table, tidyverse, janitor, readxl, fixest, ggpubr)
+```
+
+Third, we define the `theme_set`:
+```{r}
+theme_set(theme_bw())
+```
+
+Lastly, we set the working directories:
+```{r}
+dir              <- list()
+dir$data         <- paste0(dirname(getwd()), "/data/")
+dir$cons_data    <- paste0(dirname(getwd()), "/data/constructed/")
+dir$ag           <- paste0(dirname(getwd()), "/data/ag_prod/spring_summer/")
+dir$weather      <- paste0(dirname(getwd()), "/data/constructed/")
+dir$results      <- paste0(dirname(getwd()), "/tables/agricultural/")
+dir$fig          <- paste0(dirname(getwd()), "/figures/agricultural/")
+```
+
+
+# Daymet - Weather Data
+
+## Load Data 
+
+We start by opening the weather data on all municipalities of each *state* with at least one community in our sample (from the 2000 survey onward):
+```{r}
+mmp_state_tmax = read.csv(paste0(dir$weather, 
+                             "weather_state_tmax_daymet.csv"))
+
+mmp_state_weather = mmp_state_tmax
+
+for (var in c("tmin", "prcp")) {
+mmp_state_round = read.csv(paste0(dir$weather, 
+                             "weather_state_",var,"_daymet.csv"))  
+
+mmp_state_weather = left_join(mmp_state_weather, mmp_state_round, 
+                            by = c("state", "municipio", "year","month","n_obs"))
+}
+
+rm(list = c("mmp_state_tmax", "mmp_state_round"))
+```
+
+
+Since our data is yearly rather than monthly, we take the average of each variable. Furthermore, we only keep the months from April to September, the wet season in Mexico:
+```{r}
+month_start = 4
+month_end   = 9
+
+mmp_state_weather_yr = mmp_state_weather %>% 
+  rename(tmax = tmax_avg, tmin = tmin_avg) %>%
+  filter(month >= month_start & month <= month_end) %>%
+  group_by(state, municipio, year) %>%
+  summarise(prcp_y_mean=mean(prcp_ttl),
+            across(starts_with("t"), 
+                   mean, .names = "{.col}_y_mean"))
+```
+
+```{r}
+rm(mmp_state_weather)
+```
+
+
+## Normalize Data
+As before, we need to "normalize" our dataset. We do so by taking the historical average over the period 1985-2014:
+```{r}
+start_yr_hist = 1985
+end_yr_hist   = 2014
+
+weather_norm = mmp_state_weather_yr %>%
+  filter(year <= end_yr_hist & year >= start_yr_hist) %>%
+  group_by(municipio, state) %>%
+  summarise(across(ends_with("y_mean"),
+                   mean, .names = "{.col}_hist"))
+```
+
+We then proceed by taking the deviations for the historical mean of:
+
+- Precipitation in cl
+
+- Temperature in ºC
+
+
+```{r}
+mmp_state_weather_yr = mmp_state_weather_yr %>% 
+  left_join(weather_norm, by = c("municipio", "state"))
+
+for (i in c("prcp_y","tmax_y","tmin_y")) {
+  name1 = paste0(i,"_mean")
+  name2 = paste0(i,"_mean_hist")
+  name3 = paste0(i,"_mean_dev")
+  mmp_state_weather_yr = cbind(mmp_state_weather_yr,
+                          mmp_state_weather_yr[[name1]] - mmp_state_weather_yr[[name2]])
+  names(mmp_state_weather_yr)[ncol(mmp_state_weather_yr)] <- name3
+}
+
+# Modify the precipitation
+mmp_state_weather_yr = mmp_state_weather_yr %>%
+  mutate(prcp_y_mean_dev = prcp_y_mean_dev/10)
+```
+```{r}
+rm(weather_norm)
+```
+
+
+# Agricultural Data
+
+## Totals
+
+We load the total agricultural data. First, let's load the total plantation and harvested areas:
+```{r}
+total_prod_round = read_xls(paste0(dir$ag, "all/","ag_totals_2003.xls")) 
+total_prod_round = total_prod_round[8:nrow(total_prod_round),2:ncol(total_prod_round)]
+setnames(total_prod_round, 
+         new = c("state", "district","municipio","planted_ha", "harvested_ha","value_1000pesos"))
+
+total_prod_round$year = 2003
+total_prod = total_prod_round
+
+for (year in 2004:2019) {
+  total_prod_round = read_xls(paste0(dir$ag, "all/","ag_totals_",year,".xls")) 
+  total_prod_round = 
+    total_prod_round[8:nrow(total_prod_round),2:ncol(total_prod_round)]
+  setnames(total_prod_round, 
+         new = c("state", "district","municipio","planted_ha",
+                 "harvested_ha","value_1000pesos"))
+  
+  total_prod_round$year = year
+  total_prod = rbind(total_prod, total_prod_round)
+}
+
+total_prod = total_prod %>% 
+  mutate(across(ends_with("ha"), as.numeric))
+
+rm(total_prod_round)
+```
+
+
+## Corn Production
+
+### Grain
+
+We load the data on corn production. Specifically, we load corn for grain:
+```{r, output = FALSE}
+corn_round = read_xls(paste0(dir$ag, "corn/grain/","corn_grain_2003.xls")) 
+corn_round = corn_round[9:nrow(corn_round),2:ncol(corn_round)]
+setnames(corn_round, 
+          new = c("state", "district","municipio","planted_corn_ha",
+                  "harvested_corn_ha","lost_corn_ha","prod_corn_ton",
+                  "return_corn_ton_ha","return_corn_pesos_ton",
+                  "value_corn_1000pesos"))
+ 
+corn_round = corn_round %>%
+  mutate(across("planted_corn_ha":"value_corn_1000pesos", as.numeric))
+
+corn_round$year = 2003
+
+corn_grain = corn_round
+
+for (i in 2004:2019) {
+  corn_round = read_xls(paste0(dir$ag, "corn/grain/",
+                                    "corn_grain_",i,".xls")) 
+  corn_round = 
+    corn_round[9:nrow(corn_round),2:ncol(corn_round)]
+  
+  setnames(corn_round, 
+          new = c("state", "district","municipio","planted_corn_ha",
+                  "harvested_corn_ha","lost_corn_ha","prod_corn_ton",
+                  "return_corn_ton_ha","return_corn_pesos_ton",
+                  "value_corn_1000pesos"))
+ 
+corn_round = corn_round %>%
+  mutate(across("planted_corn_ha":"value_corn_1000pesos", as.numeric))
+
+corn_round$year = i
+
+corn_grain = rbind(corn_grain, corn_round)
+}
+
+corn_grain = corn_grain %>% group_by(state, municipio) %>%
+  arrange(year, .by_group = T)
+```
+
+
+We re-name corn as corn for grain, just to be more explicit:
+```{r}
+for (i in 4:10) {
+  name = names(corn_grain)[i]
+  names(corn_grain)[i] = paste0(name, "_gr")
+}
+
+corn_grain = corn_grain %>%
+  mutate(across(ends_with("gr"), as.numeric))
+```
+
+
+## Join
+
+We then merge total production with corn-for-grain:
+```{r}
+total_prod = total_prod %>%
+  full_join(corn_grain, by = c("state","district","municipio","year"))
+```
+
+We check the proportion of harvested land which correspond to corn:
+```{r}
+total_prod %>% 
+  summarise(prop_corn_gr = mean(harvested_corn_ha_gr/harvested_ha, na.rm = T))
+```
+
+We fix the names of the municipalities and states to coincide with the daymet data:
+```{r}
+total_prod = total_prod %>%
+  mutate(municipio = tolower(municipio))
+  
+total_prod = total_prod %>% 
+  mutate(state = 
+           case_when(state =="Michoacán" ~ "Michoacan",
+                state =="Yucatán" ~ "Yucatan",
+                state =="Nuevo León" ~ "Nuevo Leon",
+                state =="Querétaro" ~ "Queretaro",
+                state == "San Luis Potosí" ~ "San Luis Potosi",
+                state == "México" ~ "Mexico",
+                TRUE ~ state), 
+         municipio = 
+           case_when(municipio == "san juan mixtepec" 
+                     & district == "Valles Centrales" ~
+            "san juan mixtepec - valles centrales", 
+            municipio == "san juan mixtepec" & district == "Huajuapan de León" ~
+            "san juan mixtepec - huajuapan de leon", 
+            municipio == "san pedro mixtepec" & district == "Valles Centrales" ~ 
+              "san pedro mixtepec - valles centrales", 
+            municipio == "san pedro mixtepec" & district == "Costa" ~ 
+              "san pedro mixtepec - costa", 
+               municipio == "jonacatepec" & state == "Morelos" ~ 
+                       "jonacatepec de leandro valle",
+            municipio == "san mateo yucutindoo" ~ "san mateo yucutindó",
+            municipio == "h. v. tezoatlán de segura y luna, c. de la i.de o." ~ 
+              "heroica villa tezoatlán de segura y luna",
+                     TRUE ~ municipio))
+```
+
+
+```{r}
+mmp_state_weather_yr = mmp_state_weather_yr %>% 
+  mutate(municipio = tolower(municipio)) %>%
+  mutate(municipio = case_when(municipio == "san juan mixtepec -dto. 26 -" ~ 
+                     "san juan mixtepec - valles centrales",
+            municipio == "san juan mixtepec -dto. 08 -" ~ 
+              "san juan mixtepec - huajuapan de leon", 
+            municipio == "san pedro mixtepec -dto. 22 -" ~ 
+              "san pedro mixtepec - costa", 
+            municipio == "san pedro mixtepec -dto. 26 -" ~ 
+              "san pedro mixtepec - valles centrales", 
+            TRUE ~ municipio))
+```
+
+```{r}
+mmp_state_ag = mmp_state_weather_yr  %>%
+  left_join(total_prod, by = c("state","municipio","year")) %>%
+  filter(year > 2002)
+```
+
+
+# Plots
+
+```{r}
+harv_avg = mmp_state_ag %>% filter(harvested_ha > 0) %>%
+  group_by(state, municipio) %>%
+  summarise(harv_ha_mean=mean(harvested_ha, na.rm= T))
+```
+
+## Harvested Area
+
+We plot the variables of interest:
+```{r}
+prec_m_dev = mean(mmp_state_ag$prcp_y_mean_dev, na.rm = T)
+
+prcp_harv_plt = ggplot(mmp_state_ag %>% filter(harvested_ha != 0) %>% 
+         left_join(harv_avg, by = c("state", "municipio")) %>%
+         mutate(harv_dev = (harvested_ha - harv_ha_mean)/harv_ha_mean) %>%
+         mutate(rank_prcp_dev = ntile(prcp_y_mean_dev, 10)) %>%
+         group_by(rank_prcp_dev) %>% 
+         summarise(harv_dev       = mean(harv_dev, na.rm = TRUE)*100,
+                   norm_dev_prcp  = mean(prcp_y_mean_dev, na.rm = TRUE)), 
+       aes(x = norm_dev_prcp, y = harv_dev)) + 
+  geom_point(shape = 15, size = 3, 
+             color = "black")  + 
+  geom_smooth(color = "darkgreen") +
+  labs(x = "Precipitation (cl) - Deviation Historical Mean", y = "Harvested Area - Deviation Historical Mean (%)") + 
+  geom_vline(xintercept = 0) + 
+  geom_vline(xintercept = prec_m_dev, 
+             linetype = "dashed") 
+
+prcp_harv_plt + ggtitle("Agricultural Production", 
+         subtitle = "Harvested Area")
+```
+
+
+
+```{r}
+ggsave(paste0(dir$fig,"prcp_dev_harv_state_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+prcp_harv_plt + 
+  theme(text = element_text(size = 14))
+```
+
+```{r}
+ggsave(paste0(dir$fig,"prcp_dev_harv_state_plt_prest.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+tmax_m_dev = mean(mmp_state_ag$tmax_y_mean_dev, na.rm = T)
+
+tmax_harv_plt = ggplot(mmp_state_ag %>% filter(harvested_ha != 0) %>% 
+         left_join(harv_avg, by = c("state", "municipio")) %>%
+         mutate(harv_dev = (harvested_ha - harv_ha_mean)/harv_ha_mean) %>%
+         mutate(rank_tmax_dev = ntile(tmax_y_mean_dev, 10)) %>%
+         group_by(rank_tmax_dev) %>% 
+         summarise(harv_dev       = mean(harv_dev, na.rm = TRUE)*100,
+                   norm_dev_tmax  = mean(tmax_y_mean_dev, na.rm = TRUE)), 
+       aes(x = norm_dev_tmax, y = harv_dev)) + 
+  geom_point(shape = 15, size = 3, 
+             color = "black")  + 
+  geom_smooth(color = "darkgreen") + 
+  labs(x = "Max Temperature (ºC) - Deviation Historical Mean", y = "Harvested Area - Deviation Historical Mean (%)") +
+  geom_vline(xintercept = 0) + 
+  geom_vline(xintercept = tmax_m_dev, 
+             linetype = "dashed") 
+
+tmax_harv_plt + 
+  ggtitle("Agricultural Production", 
+          subtitle = "Harvested Area")
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmax_dev_harv_state_plt.png"), 
+       width = 7, height = 4.5)
+```
+```{r}
+tmax_harv_plt + 
+  theme(text = element_text(size = 14))
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmax_dev_harv_state_plt_prest.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+prcp_tmax_plt = ggarrange(prcp_harv_plt + ggtitle("Precipitation and Harvested Land") + labs(x = "Deviation Historical Mean (cl)"), 
+                          tmax_harv_plt + labs(y = "", x = "Deviation Historical Mean (ºC)") + ggtitle("Max Temperature and Harvested Land"), 
+          ncol = 2, common.legend = TRUE, legend = "bottom")
+
+prcp_tmax_plt
+```
+
+
+```{r}
+ggsave(paste0(dir$fig,"prcp_tmax_dev_harv_state_plt.png"), 
+       width = 9, height = 4.5)
+```
+
+```{r}
+tmin_m_dev = mean(mmp_state_ag$tmin_y_mean_dev, na.rm = T)
+
+tmin_harv_plt = ggplot(mmp_state_ag %>% filter(harvested_ha != 0) %>% 
+         left_join(harv_avg, by = c("state", "municipio")) %>%
+         mutate(harv_dev = (harvested_ha - harv_ha_mean)/harv_ha_mean) %>%
+         mutate(rank_tmin_dev = ntile(tmin_y_mean_dev, 10)) %>%
+         group_by(rank_tmin_dev) %>% 
+         summarise(harv_dev        = mean(harv_dev, na.rm = TRUE)*100,
+                   norm_dev_tmin  = mean(tmin_y_mean_dev, na.rm = TRUE)),
+       aes(x = norm_dev_tmin, y = harv_dev)) + 
+  geom_point(shape = 15, size = 3, 
+             color = "black")  + 
+  geom_smooth(color = "darkgreen") + 
+  labs(x = "Min Temperature - Deviation Historical Mean (ºC)", y = "Harvested Area - Deviation Historical Mean (%)") +
+  geom_vline(xintercept = 0) + 
+  geom_vline(xintercept = tmin_m_dev, 
+             linetype = "dashed") 
+
+tmin_harv_plt +
+  ggtitle("Min Temperature and Harvested Land")
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmin_dev_harv_state_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+
+```{r}
+tmin_harv_plt + 
+  theme(text = element_text(size = 14))
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmin_dev_harv_state_plt_prest.png"), 
+       width = 7, height = 4.5)
+```
+
+# Regressions
+
+## Totals
+
+We then run the regressions:
+```{r}
+mmp_state_ag = mmp_state_ag %>%
+  mutate(id = as.factor(paste0(state,"-",municipio)))
+
+formula = "log(harvested_ha) ~ prcp_y_mean_dev | id + year"
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_tot = list(regression)
+
+for (i in c("tmax", "tmin")) {
+formula = paste0("log(harvested_ha) ~ ",i,"_y_mean_dev | id + year")
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_tot = c(regression_list_tot,list(regression))
+}
+```
+
+```{r}
+setFixest_dict(c(`log(harvested_ha)` = "Log (Harv Area) - Ha",
+                 prcp_y_mean_dev   = "Dev Precipiation (cl)", 
+                 tmax_y_mean_dev   = "Dev Max Temp (ºC)",
+                 tmin_y_mean_dev   = "Dev Min Temp (ºC)"))
+
+etable(regression_list_tot[1:4], 
+       file = paste0(dir$results,"harv_state_results.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+
+etable(regression_list_tot[1:4])
+```
+
+
+## Corn Production - Grain
+```{r}
+formula = "log(prod_corn_ton_gr) ~ prcp_y_mean_dev | id + year"
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_corn = list(regression)
+
+for (i in c("tmax", "tmin")) {
+formula = paste0("log(prod_corn_ton_gr) ~ ",i,"_y_mean_dev | id + year")
+
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_corn = c(regression_list_corn,list(regression))
+}
+```
+
+```{r}
+setFixest_dict(c(`log(prod_corn_ton_gr)` = "Log (Corn Prod) - Gr, Ton",
+                 `log(harvested_ha)`  = "Log (Harv Area) - Ha",
+                 prcp_y_mean_dev   = "Dev Precipiation (cl)", 
+                 tmax_y_mean_dev   = "Dev Max Temp (ºC)",
+                 tmin_y_mean_dev   = "Dev Min Temp (ºC)"))
+
+etable(regression_list_corn[1:4], 
+       file = paste0(dir$results,"corn_state_results.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+
+etable(regression_list_corn[1:4])
+```
+
+```{r}
+etable(c(regression_list_tot[1:4],regression_list_corn[1:4]), 
+       file = paste0(dir$results,"ag_state_results.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+```

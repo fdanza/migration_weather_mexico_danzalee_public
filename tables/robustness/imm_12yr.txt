@@ -1,0 +1,32 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{Migrant}\\
+   Model:                      & (1)            & (2)            & (3)            & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   Dev Precipitation (cl, t-1) & -0.0004$^{**}$ &                &                &   \\   
+                               & (0.0002)       &                &                &   \\   
+   Dev Avg Temp (ºC, t-1)      &                & 0.0060$^{***}$ &                &   \\   
+                               &                & (0.0008)       &                &   \\   
+   Dev Max Temp (ºC, t-1)      &                &                & 0.0040$^{***}$ &   \\   
+                               &                &                & (0.0006)       &   \\   
+   Dev Min Temp (ºC, t-1)      &                &                &                & 0.0044$^{***}$\\   
+                               &                &                &                & (0.0008)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   id                          & Yes            & Yes            & Yes            & Yes\\  
+   year                        & Yes            & Yes            & Yes            & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                & 143,223        & 143,223        & 143,223        & 143,223\\  
+   Adjusted R$^2$              & 0.23555        & 0.23602        & 0.23594        & 0.23576\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (commun) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

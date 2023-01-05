@@ -1,0 +1,27 @@
+% latex table generated in R 4.2.2 by xtable 1.8-4 package
+% Thu Jan  5 10:45:00 2023
+\begin{table}[h]
+\centering
+\begin{tabular}{lcccc}
+ Variable & Mean & SD & Min & Max \\ 
+  \hline
+Age & 41.612 & 12.166 & 18 & 65 \\ 
+  Male & 0.873 & 0.334 & 0 & 1 \\ 
+  Educ. Level (Yr) & 7.116 & 4.409 & 0 & 23 \\ 
+  Agricultural Worker & 0.524 & 0.499 & 0 & 1 \\ 
+  Land Owner & 0.170 & 0.375 & 0 & 1 \\ 
+  Business Owner & 0.248 & 0.432 & 0 & 1 \\ 
+  Owner & 0.368 & 0.482 & 0 & 1 \\ 
+  Migrate* & 0.015 & 0.120 & 0 & 1 \\ 
+  Legally Migrate* & 0.004 & 0.063 & 0 & 1 \\ 
+  Illegaly Migrate* & 0.011 & 0.102 & 0 & 1 \\ 
+  Length Stayed** (Mh) & 28.645 & 26.383 & 1 & 132 \\ 
+   \hline
+\hline
+Individuals & 12,681 & 12,681 & 12,681 & 12,681 \\ 
+  Observations & 129,343 & 129,343 & 129,343 & 129,343 \\ 
+   \hline
+\end{tabular}
+\caption{Summary Statistics} 
+\label{desc_stats}
+\end{table}

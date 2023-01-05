@@ -1,0 +1,190 @@
+---
+title:    'Minimum Temperature - Daymet: Monthly'
+author:   "Facundo Danza & Eungik Lee"
+subtitle: "Load and Aggregate"
+---
+
+# Pre-analysis
+
+First, we clean the R-environment:
+```{r}
+rm(list = ls())
+gc()
+```
+
+Then, we load (and install) the needed packages:
+```{r}
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(raster, sf, data.table, tidyverse, maps, janitor, 
+               tictoc, future, future.apply, beepr)
+```
+
+Lastly, set the directories in which we have the data:
+```{r}
+dir         <- list()
+dir$data    <- paste0(dirname(getwd()), "/data/")
+dir$daymet  <- paste0(dir$data,"daymet/tmin/")
+dir$mun     <- paste0(dirname(getwd()), "/data/hdx/")
+dir$data_constructed <- paste0(dirname(getwd()), "/data/constructed/")
+```
+
+
+# MMP - Communities
+
+We start by opening the data on the states with a least a community in MMP (from the 2000 survey onward):
+```{r}
+mmp_state = read.csv(paste0(dir$data_constructed, 
+                             "mmp_clean_state.csv"), 
+                     encoding = "latin1") %>% 
+  mutate(state = ifelse(state == "San Luis Potos¡", 
+                        "San Luis Potosi", 
+                        state)) %>% unique()
+```
+
+We then match this data with the data on municipios' boundaries. 
+
+First, we load the municipios polygons using the `sf` package:
+```{r}
+mx_mun = st_read(paste0(dir$mun,"mex_admbnda_govmex_20210618_SHP",
+                "/mex_admbnda_adm2_govmex_20210618.shp"),
+        quiet = TRUE)  %>%
+   mutate(municipio = ADM2_ES,
+          state     = ADM1_ES) %>%
+  dplyr::select(municipio, state)
+```
+
+We then "clean" such data. Specifically, we change the names of some states and muncipios:
+```{r}
+mx_mun = mx_mun %>% 
+  mutate(state = 
+           case_when(state == "Veracruz de Ignacio de la Llave" ~ "Veracruz", 
+                state =="Querétaro de Arteaga" ~ "Queretaro",
+                state =="Yucatán" ~ "Yucatan",
+                state =="Nuevo León" ~ "Nuevo Leon",
+                state =="Michoacán de Ocampo" ~ "Michoacan",
+                state == "San Luis Potosí" ~ "San Luis Potosi",
+                state == "México" ~ "Mexico",
+                TRUE ~ state),
+         municipio = 
+           case_when(municipio == "Jonacatepec" ~ 
+                       "Jonacatepec de Leandro Valle",
+                TRUE ~ municipio))
+```
+
+
+Finally, we merge the MMP data with the municipios polygons We define the new dataset as `sf` for computational convenience. 
+```{r}
+mmp_state_geo = left_join(mmp_state, mx_mun, by = c("state"))
+mmp_state_geo = st_as_sf(mmp_state_geo)
+```
+
+
+# Daymet - Weather data
+
+We load the weather data doing a loop over it. 
+
+First, we separately load the 1980 data. We use the `stack()` function from the `raster` package:
+```{r}
+tmin_na_1980 <-
+   paste0(dir$daymet, "daymet_v4_tmin_monavg_na_1980.nc") %>%
+   raster::stack()
+```
+
+The CRS of the data is missing `datum`, which slows down the process. To check that out:
+```{r}
+crs(tmin_na_1980)
+```
+
+We add the missing information below:
+```{r}
+crs(tmin_na_1980) <- "+proj=lcc +lat_0=42.5 +lon_0=-100 +lat_1=25 +lat_2=60 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+```
+
+We change the CRS of the MMP maps to match the one of the Daymet:
+```{r}
+mmp_state_geo = mmp_state_geo %>%
+  st_transform(crs=st_crs(tmin_na_1980))
+```
+
+
+# Loop 
+
+For computational convenience, we do the whole process in a loop (and we parallelize the code). We follow the following steps:
+
+1- We use the `raster::mask()` function to replace with `NA` any point outside the municipalities under study,
+
+2- Formally, we would like to have weather data on a municipality level. Thus, we need to aggregate the weather data at such level. Fortunately, the process of doing so in R is quite direct. In particular, we use the `extract()` function of the `raster` package.
+
+3- We proceed by defining our new dataset as `sf`, projecting it to the same projection as our weather data, and renaming the max temperature. 
+
+4- To simplify the process (and for memory reasons), we keep the data as data.frame (we drop the geographical information), and we make tidy.
+
+First, we set the process to be done in parallel.
+```{r}
+plan(multisession)
+```
+
+Second, we define the function doing each step we discussed above:
+```{r, warning = FALSE}
+direction = dir$daymet
+
+data_maps = mmp_state_geo
+
+loop_extract_daymet = 
+  function(i, 
+           dir = direction,
+           maps = data_maps){
+  # Sys.sleep(2) #be nice to your computer!
+  tmin_na_loop <-
+  paste0(dir, "daymet_v4_tmin_monavg_na_",i,".nc") %>%
+  raster::stack()
+
+  crs(tmin_na_loop) <- 
+    "+proj=lcc +lat_0=42.5 +lon_0=-100 +lat_1=25 +lat_2=60 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+  
+  tmin_mun_loop_crop <- raster::crop(x = tmin_na_loop,
+                            y = maps)
+
+  tmin_mun_loop <- raster::mask(x = tmin_mun_loop_crop,
+                            mask = maps)
+
+  tmin_mun_extract_loop <- raster::extract(
+  x = tmin_mun_loop,
+  y = maps,
+  fun = mean,
+  na.rm = T,
+  sp = T)
+
+  tmin_mun_extract_loop =  tmin_mun_extract_loop %>%
+  st_as_sf() %>%
+  st_drop_geometry()
+
+  tmin_mun_extract_loop = pivot_longer(tmin_mun_extract_loop,
+                                      cols = starts_with(paste0("X",i)),
+                            names_to  = "month",
+                            names_prefix = paste0("X",i,"."),
+                            values_to = "tmin_avg") %>%
+  mutate(month = as.numeric(substr(month, 1, 2)),
+         year = i)
+  return(tmin_mun_extract_loop)
+}
+```
+
+Finally, we do the whole loop.
+```{r}
+tic()
+future_tmin_all = 
+  future_lapply(1980:2019, 
+  loop_extract_daymet, future.seed = NULL) %>%
+  bind_rows()
+toc()
+```
+
+We save our (long) dataset on a csv:
+```{r}
+write_csv(future_tmin_all, 
+          paste0(dir$data,
+                    "/constructed_data/weather_state_tmin_daymet.csv"))
+beep()
+```

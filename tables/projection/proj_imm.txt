@@ -1,0 +1,18 @@
+% latex table generated in R 4.2.2 by xtable 1.8-4 package
+% Thu Jan  5 11:08:46 2023
+\begin{table}[h]
+\centering
+\begin{tabular}{l|cc|cc}
+   & \multicolumn{2}{|c}{2ºC} & \multicolumn{2}{|c}{4ºC} \\Variable & Deviation & Migration (p.p) & Deviation & Migration (p.p) \\ 
+  \hline
+Precipitation (cl) & -1.11 & 0.04 & -2.38 & 0.10 \\ 
+   & (1.509) & (0.02) & (1.822) & (0.043) \\ 
+  Max Temp (ºC) & 1.96 & 0.81 & 4.45 & 1.84 \\ 
+   & (1.059) & (0.169) & (1.147) & (0.383) \\ 
+  Min Temp (ºC) & 2.19 & 0.97 & 4.30 & 1.90 \\ 
+   & (0.774) & (0.138) & (0.77) & (0.271) \\ 
+   \hline
+\end{tabular}
+\caption{Projected Illegal Migration} 
+\label{proj_imm}
+\end{table}

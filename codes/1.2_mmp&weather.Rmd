@@ -1,0 +1,861 @@
+---
+title:     'MMP and the Weather'
+author:    "Facundo Danza & Eungik Lee"
+susbtitle: "Descripitives, Plots, and Regressions"
+---
+
+# Pre-analysis
+
+First, we clean the R-environment:
+```{r}
+rm(list = ls())
+gc()
+```
+
+Second, we load (and install) the needed packages:
+```{r}
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(tidyverse, data.table, janitor, dplyr, fixest, 
+               expss, ggpubr, xtable, scales, Hmisc)
+```
+
+Third, we define the `theme_set`:
+```{r}
+theme_set(theme_bw())
+```
+
+Lastly, we set the working directories:
+```{r}
+dir                     <- list()
+dir$root                <- dirname(getwd())
+dir$data                <- paste0(dirname(getwd()), "/data/")
+dir$weather             <- paste0(dirname(getwd()),
+                                  "/data/confidential/meteoblue/")
+dir$results             <- paste0(dirname(getwd()), "/tables/")
+dir$constructed_conf    <- paste0(dirname(getwd()),
+                                  "/data/confidential/constructed/")
+dir$constructed_data    <- paste0(dirname(getwd()),
+                                  "/data/constructed/")
+
+dir$fig                 <- paste0(dirname(getwd()), "/figures/")
+```
+
+
+# Meteoblue - Weather Data
+
+## Load the data
+
+First, we load the daily weather data (and drop the missing values of it):
+```{r}
+weather_daily = read.csv(paste0(dir$weather, "weather.csv")) %>%
+              filter(!is.na(day))
+```
+
+Since our data is annual rather than daily, we take the average (or sum) of each variable. Furthermore, we only keep the months from April to September, the wet season in Mexico:
+```{r}
+month_start = 4
+month_end   = 9
+
+weather_year = weather_daily %>% 
+  filter(month >= month_start & month <= month_end) %>%
+  group_by(commun, year, month) %>%
+  summarise(prec_m_sum=sum(precipitation),
+            across(starts_with("temp"), mean)) %>%
+  group_by(commun, year) %>%
+  summarise(prec_y_mean=mean(prec_m_sum),
+            across(starts_with("temp"), 
+                   mean, .names = "{.col}_y_mean"))
+```
+
+
+```{r}
+rm(weather_daily)
+```
+
+
+# Mexican Migration Project (MMP)
+
+## Load the data
+
+First, we load the data on MMP. We have already cleaned the data (you can find such code as "1.1_mmp_data_analysis.Rmd.")
+```{r}
+mmp = read.csv(paste0(dir$constructed_conf,
+                      "mmp_individual_clean.csv")) %>%
+  filter(year >= 1989)
+```
+
+
+# Merge MMP and Weather
+
+We, then, merge data on weather with MMP, and keep only the communities with weather data:
+```{r}
+mmp_com_weather = left_join(mmp, 
+                            weather_year, by = c("commun","year")) %>%
+  filter(!is.na(prec_y_mean))
+```
+
+
+## Normalize Weather
+
+First, we need to "normalize" our weather data; that is, we find the historical average over the period 1985-2014:
+```{r}
+start_yr_hist = 1985
+end_yr_hist   = 2014
+
+weather_norm = weather_year %>%
+  filter(year <= end_yr_hist & year >= start_yr_hist) %>%
+  group_by(commun) %>%
+  summarise(across(ends_with("y_mean"),
+                   mean, .names = "{.col}_hist"))
+```
+
+We add this "historical-average" dataset to the pre-existing one. 
+```{r}
+mmp_com_weather = left_join(mmp_com_weather, 
+                            weather_norm, by = "commun")
+```
+
+```{r}
+rm(weather_norm)
+```
+
+We only keep 10-year windows backwards (we include the 11 year for the regressions and plots we'll run later):
+```{r}
+year_window = 11
+
+mmp_com_weather = mmp_com_weather %>% 
+  filter((surveyyr - year) <= year_window)
+```
+
+
+We then proceed by taking the deviations for each weather variable with respect to its historical mean. Specifically, we define deviations of:
+
+- Precipitation in cl
+
+- Temperature in ºC
+
+```{r}
+for (i in c("prec_y","temp_avg_y","temp_max_y","temp_min_y")) {
+  name1 = paste0(i,"_mean")
+  name2 = paste0(i,"_mean_hist")
+  name3 = paste0(i,"_mean_dev")
+  mmp_com_weather = cbind(mmp_com_weather,
+                          mmp_com_weather[[name1]] - mmp_com_weather[[name2]])
+  names(mmp_com_weather)[ncol(mmp_com_weather)] <- name3
+}
+
+# Re-write for precipitation
+mmp_com_weather = mmp_com_weather %>%
+  mutate(prec_y_mean_dev = prec_y_mean_dev/10)
+```
+
+We also take lag variables, which we believe is the relevant timing for the migration decision:
+```{r}
+mmp_com_weather = mmp_com_weather %>%
+  arrange(id, year)
+
+mmp_com_weather = mmp_com_weather %>%
+  group_by(id) %>%
+  mutate(prec_y_mean_dev_lag = lag(prec_y_mean_dev),
+         across(starts_with("temp") & ends_with("y_mean_dev"), ~ lag(.x),
+                .names = "{.col}_lag")) %>% ungroup()
+```
+
+
+# Descriptives
+
+In this section, we add the summary statistics of the model. Formally, we are only using the 10 year-backward window in our main analysis; we thus cut the data slightly:
+```{r}
+year_window = 10
+
+mmp_com_weather_stats = mmp_com_weather %>% 
+  filter((surveyyr - year) <= year_window)
+```
+
+We count the number of communities:
+```{r}
+n_com = mmp_com_weather_stats %>%
+  group_by(commun) %>% summarise(n_obs = n()) %>% nrow()
+
+n_com
+```
+
+We then create the first descripitve table. For some of the variable of interest, we take the average, the standard deviation, the minimum and the maximum. 
+```{r}
+table1 = mmp_com_weather_stats %>% 
+  dplyr::summarise_at(.vars = "age", 
+               .funs = c("Mean" = ~wtd.mean(.x, weights = weight),
+                         "SD" = ~ sqrt(wtd.var(.x, weights = weight)),
+                         "Min" = min,"Max" = max), 
+               na.rm = T) 
+# Fortunately, there are no missing values in our sample
+table1 = cbind(Variable = "Age", table1)
+
+var_names  = c("Male", "Educ. Level (Yr)","Agricultural Worker", 
+               "Land Owner", "Business Owner","Owner", "Migrate*", 
+               "Legally Migrate*", "Illegaly Migrate*")
+i = 0
+for (var in c("male", "educ_miss", 
+              "ag_work", "land_owner", "business_owner", "owner", "M_U",
+              "M_UL", "M_UIL")) {
+  table_round = mmp_com_weather_stats %>% 
+  summarise_at(.vars = var, 
+               .funs = c("Mean" = ~wtd.mean(.x, weights = weight),
+                         "SD" = ~ sqrt(wtd.var(.x, weights = weight)),
+                         "Min" = min,"Max" = max), 
+               na.rm = T) 
+
+ i = i + 1
+ table_round = cbind(Variable = var_names[i], table_round) 
+ 
+ table1 = rbind(table1, table_round)
+}
+
+
+mmp_com_weather_stay = mmp_com_weather_stats %>% 
+  group_by(id) %>% 
+  summarise(n_trip  = sum(M_U, na.rm = T), 
+            usdur_tot = sum(usdur, na.rm = T), 
+            weight = mean(weight)) %>%
+  mutate(us_exp_avg = ifelse(n_trip > 0 & usdur_tot > 0, 
+                             (usdur_tot/n_trip), NA)) %>%
+  filter(!is.na(us_exp_avg))
+
+table_round = mmp_com_weather_stay %>% 
+  summarise_at(.vars = "us_exp_avg", 
+               .funs = c("Mean" = ~wtd.mean(.x, weights = weight),
+                         "SD" = ~ sqrt(wtd.var(.x, weights = weight)),
+                         "Min" = min,"Max" = max), 
+               na.rm = T) 
+table_round = cbind(Variable = "Length Stayed** (Mh)", table_round) 
+ 
+table1 = rbind(table1, table_round)
+
+table1 = table1 %>%
+  mutate(across("Mean":"SD", ~ scales::comma(.x,
+                                              accuracy = 0.001)),
+         across("Max":"Min", ~ scales::comma(.x,
+                                              accuracy = 1)))
+
+n_ind = mmp_com_weather_stats %>%
+  group_by(id) %>% summarise(n_obs = n()) %>% nrow()
+
+n_ind = as.data.frame(cbind("Individuals", t(rep(n_ind, 4)))) %>%
+  set_names(c("Variable", "Mean", "SD", "Min", "Max")) %>%
+  mutate(across("Mean":"Max", ~ scales::comma(as.numeric(.x),
+                                            accuracy = 1)))
+  
+n_obs = mmp_com_weather_stats %>% 
+  summarise("Mean" = n(),"SD" = n(),"Min" = n(),"Max" = n()) 
+  
+
+n_obs = cbind(Variable = "Observations", n_obs) %>% 
+  mutate(across("Mean":"Max", ~ scales::comma(.x,
+                                              accuracy =1)))
+
+table1 = rbind(table1, n_ind, n_obs)
+
+table1
+```
+
+We save the table in latex's form:
+```{r}
+tab1 =xtable(table1, 
+       caption = "Summary Statistics",
+       align   = c("l","l","c","c","c","c"),
+       label   = "desc_stats")
+
+double_line = nrow(table1) - 2
+print(tab1,file=paste0(dir$results,"des_stats.txt"),
+      table.placement = "h",
+      caption.placement="bottom", 
+      include.rownames = FALSE, 
+      include.colnames = TRUE, 
+      hline.after = c(0, double_line, double_line, nrow(table1)))
+```
+
+There are two variable which formally do not have as many observations as the other: "Migrate" and "Length Stayed". We calculate the number of observations the actually have below:
+```{r}
+mmp_com_weather_stats %>%
+  summarise("# Obs - Migrate" = sum(!is.na(M_U)),
+            "# Obs - Length Stayed"  = sum(inus, na.rm = T))
+```
+
+We do a very similar process for our weather variables:
+```{r}
+com_weather = mmp_com_weather %>% filter(year != surveyyr) %>% 
+  group_by(commun, year) %>% 
+  summarise(across(c("prec_y_mean", "temp_avg_y_mean",
+                     "temp_max_y_mean","temp_min_y_mean"), 
+            ~  mean(.x, na.rm = TRUE))) %>% ungroup()
+
+table2 = com_weather %>% 
+  dplyr::summarise_at(.vars = "prec_y_mean", 
+               .funs = c("Mean" = mean,"SD" = sd,"Min" = min,"Max" = max), 
+               na.rm = T) 
+
+table2 = cbind(Variable = "Precipitation (cl)", table2)
+
+
+var_names  = c("Avg Temperature (ºC)", "Max Temperature (ºC)",
+               "Min Temperature (ºC)")
+i = 0
+for (var in c("temp_avg_y_mean", 
+              "temp_max_y_mean", "temp_min_y_mean")) {
+  
+ table_round = com_weather %>% 
+  summarise_at(.vars = var, 
+               .funs = c("Mean" = mean,"SD" = sd, "Min" = min,"Max" = max), 
+               na.rm = T) 
+
+i = i + 1
+table_round = cbind(Variable = var_names[i], table_round) 
+ 
+table2 = rbind(table2, table_round)
+}
+
+com_weather_sd =  com_weather %>%
+  group_by(commun) %>%
+  summarise(across(c("prec_y_mean", "temp_avg_y_mean",
+                     "temp_max_y_mean","temp_min_y_mean"), 
+            ~  sd(.x, na.rm = TRUE))) %>%
+  ungroup() %>%
+  summarise(across(c("prec_y_mean", "temp_avg_y_mean",
+                     "temp_max_y_mean","temp_min_y_mean"), 
+            ~  mean(.x, na.rm = TRUE), .names = "{.col}_sd"))
+
+table2 = cbind(table2, "SD within" = t(com_weather_sd)) 
+
+com_weather_sd_across =  com_weather %>% group_by(year) %>%
+  summarise(across(c("prec_y_mean", "temp_avg_y_mean",
+                     "temp_max_y_mean","temp_min_y_mean"), 
+            ~  sd(.x, na.rm = TRUE))) %>%
+  summarise(across(c("prec_y_mean", "temp_avg_y_mean",
+                     "temp_max_y_mean","temp_min_y_mean"), 
+            ~  mean(.x, na.rm = TRUE)))
+
+table2 = cbind(table2, "SD across" = t(com_weather_sd_across))
+rownames(table2) <- NULL
+
+table2 = table2 %>%
+  mutate(across("Mean":"SD across", ~ scales::comma(.x,
+                                              accuracy = 0.01)))
+
+n_com = com_weather %>%
+  group_by(commun) %>% summarise(n_obs = n()) %>% nrow()
+
+n_com = as.data.frame(cbind("Communities", t(rep(n_com, 6)))) %>%
+  set_names(c("Variable", "Mean", "SD", 
+              "Min", "Max", "SD within", "SD across")) %>%
+  mutate(across("Mean":"SD across", ~ scales::comma(as.numeric(.x),
+                                            accuracy = 1)))
+  
+n_obs = com_weather %>% 
+  summarise("Mean" = n(),"SD" = n(),"Min" = n(),"Max" = n(), 
+            "SD within" = n(), "SD across" = n()) %>%
+  mutate(across("Mean":"SD across", ~ scales::comma(.x,
+                                              accuracy = 1)))
+
+n_obs = cbind(Variable = "Observations", n_obs)
+table2 = rbind(table2, n_com, n_obs)
+
+table2
+```
+
+```{r}
+tab2 =xtable(table2, 
+       caption = "Summary Statistics - Weather",
+       digits  = 2, 
+       align   = c("l","l","c","c","c","c","c","c"),
+       label   = "desc_stats_weather")
+
+print(tab2,file=paste0(dir$results,"des_stats_weather.txt"),
+      table.placement = "h",
+      caption.placement="bottom", 
+      include.rownames = FALSE, 
+      include.colnames = TRUE, 
+      hline.after = c(0, 4, 4, nrow(table2)))
+```
+
+
+Lastly, we calculate the proportion of migrants in a given year. We will use this to interpret our results later on.
+```{r}
+prop_migrant = mmp_com_weather_stats %>%
+  summarise("Prop of Migrants" = mean(M_U, na.rm = T),
+            "Prop of Illegal Migrants" = mean(M_UIL, na.rm = TRUE),
+            "Prop of Legal Migrants" = mean(M_UL, na.rm = TRUE))
+
+prop_migrant
+```
+```{r}
+write_csv(prop_migrant, 
+          file=paste0(dir$constructed_data,"prop_mig.csv"))
+```
+
+
+```{r}
+rm(list=ls(pattern="tab"))
+rm(list=ls(patter=c("n_")))
+rm(list=c("com_weather","com_weather_sd","com_weather_sd_across",
+          "mmp_com_weather_stats", "mmp_com_weather_stay"))
+```
+
+
+# Plots 
+
+We plot the variables of interest. First, historical deviations for weather variables to the migration decision:
+```{r}
+prec_m_dev = mean(mmp_com_weather$prec_y_mean_dev_lag, na.rm = T)
+
+prcp_plt = ggplot(mmp_com_weather %>% 
+         mutate(rank_prcp_dev = ntile(prec_y_mean_dev_lag, 10)) %>%
+         group_by(rank_prcp_dev) %>% 
+         summarise(M_U_prop       = mean(M_U, na.rm = TRUE)*100, 
+                   M_UIL_prop     = mean(M_UIL, na.rm = TRUE)*100, 
+                   M_UL_prop      = mean(M_UL, na.rm = TRUE)*100, 
+                   norm_dev_prcp  = mean(prec_y_mean_dev_lag, 
+                                         na.rm = TRUE))) + 
+  geom_point(aes(x = norm_dev_prcp, y = M_U_prop,  shape = "Total"), size = 3,
+             color = "black") + 
+  geom_point(aes(x = norm_dev_prcp, y = M_UIL_prop,shape = "Illegal"), size = 3,
+             color = "blue") +
+  geom_point(aes(x = norm_dev_prcp, y = M_UL_prop, shape = "Legal"), size = 3,
+             color = "red") +
+  geom_vline(xintercept = 0) + 
+  geom_vline(xintercept = prec_m_dev, 
+             linetype = "dashed") + 
+  labs(x = "Precipitation - Deviation Historical Mean (cl, t-1)", y = "Migrantion (% of Population)") +
+  scale_shape_manual(name = "", values = c("Total" = 15, 
+                                           "Illegal" = 16, 
+                                           "Legal" = 17)) +
+       guides(shape=
+                guide_legend(override.aes=
+                                   list(color=c("blue","red","black"))))
+
+prcp_plt + 
+  ggtitle("Precipitacion and Migration") 
+```
+
+
+```{r}
+ggsave(paste0(dir$fig,"prcp_dev_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+prcp_plt + 
+  theme(text = element_text(size = 14)) 
+```
+```{r}
+ggsave(paste0(dir$fig,"prcp_dev_plt_prest.png"), 
+       width = 7, height = 4.5)
+```
+
+
+```{r}
+tavg_m_dev = mean(mmp_com_weather$temp_avg_y_mean_dev_lag, na.rm = T)
+
+tavg_plt = ggplot(mmp_com_weather %>% 
+                    mutate(rank_tavg_dev = 
+                             ntile(temp_avg_y_mean_dev_lag, 10)) %>%
+         group_by(rank_tavg_dev) %>% 
+         summarise(M_U_prop       = mean(M_U, na.rm = TRUE)*100, 
+                   M_UIL_prop     = mean(M_UIL, na.rm = TRUE)*100, 
+                   M_UL_prop      = mean(M_UL, na.rm = TRUE)*100, 
+                   norm_dev_tavg  = mean(temp_avg_y_mean_dev_lag, na.rm = TRUE), 
+                   n_obs = n())) + 
+  geom_point(aes(x = norm_dev_tavg, y = M_U_prop,  shape = "Total"), size = 3,
+             color = "black") + 
+  geom_point(aes(x = norm_dev_tavg, y = M_UIL_prop,shape = "Illegal"), size = 3,
+             color = "blue") +
+  geom_point(aes(x = norm_dev_tavg, y = M_UL_prop, shape = "Legal"), size = 3,
+             color = "red") + 
+  labs(x = "Avg Temperature - Deviation Historical Mean (ºC, t-1)", 
+       y = "Migration (% of Population)") + 
+  geom_vline(xintercept = 0) + 
+  geom_vline(xintercept = tavg_m_dev, 
+             linetype = "dashed") + 
+  scale_shape_manual(name = "", values = c("Total" = 15, 
+                                           "Illegal" = 16, 
+                                           "Legal" = 17))  +
+       guides(shape=
+                guide_legend(override.aes=
+                                   list(color=c("blue","red","black"))))
+tavg_plt + 
+  ggtitle("Average Temperature and Migration")
+```
+
+
+```{r}
+ggsave(paste0(dir$fig,"tavg_dev_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+tavg_plt + 
+  theme(text = element_text(size = 14))
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tavg_dev_plt_prest.png"), 
+       width = 7, height = 4.5)
+```
+
+
+
+```{r}
+tmax_m_dev = mean(mmp_com_weather$temp_max_y_mean_dev_lag, na.rm = T)
+
+tmax_plt = ggplot(mmp_com_weather %>% mutate(rank_tmax_dev = ntile(temp_max_y_mean_dev_lag, 10)) %>%
+         group_by(rank_tmax_dev) %>% 
+         summarise(M_U_prop       = mean(M_U, na.rm = TRUE)*100, 
+                   M_UIL_prop     = mean(M_UIL, na.rm = TRUE)*100, 
+                   M_UL_prop      = mean(M_UL, na.rm = TRUE)*100, 
+                   norm_dev_tmax  = mean(temp_max_y_mean_dev_lag, na.rm = TRUE), 
+                   n_obs = n())) + 
+  geom_point(aes(x = norm_dev_tmax, y = M_U_prop,  shape = "Total"), size = 3,
+             color = "black") + 
+  geom_point(aes(x = norm_dev_tmax, y = M_UIL_prop,shape = "Illegal"), size = 3,
+             color = "blue") +
+  geom_point(aes(x = norm_dev_tmax, y = M_UL_prop, shape = "Legal"), size = 3,
+             color = "red") + 
+  geom_vline(xintercept = 0) + 
+    geom_vline(xintercept = tmax_m_dev, 
+             linetype = "dashed") + 
+  labs(x = "Max Temperature - Deviation Historical Mean (ºC, t-1)", y = "Migration (% of Population)") +
+  scale_shape_manual(name = "", values = c("Total" = 15, 
+                                           "Illegal" = 16, 
+                                           "Legal" = 17))  +
+       guides(shape=
+                guide_legend(override.aes=
+                                   list(color=c("blue","red","black"))))
+
+tmax_plt + 
+  ggtitle("Max Temperature and Migration") 
+```
+
+
+```{r}
+ggsave(paste0(dir$fig,"tmax_dev_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+tmax_plt + 
+  theme(text = element_text(size = 14))
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmax_dev_plt_prest.png"), 
+       width = 7, height = 4.5)
+```
+
+
+
+
+```{r}
+prcp_tmax_plt = ggarrange(prcp_plt + ggtitle("Precipitation and Migration") + labs(x = "Deviation Historical Mean (cl, t-1)"), 
+                          tmax_plt + labs(y = "", x = "Deviation Historical Mean (ºC, t-1)") + ggtitle("Max Temperature and Migration"), 
+          ncol = 2, common.legend = TRUE, legend = "bottom")
+
+prcp_tmax_plt
+```
+
+```{r}
+ggsave(paste0(dir$fig,"prcp_tmax_dev_plt.png"), 
+       width = 9, height = 4.5)
+```
+
+#### Spanish
+```{r}
+prcp_plt = ggplot(mmp_com_weather %>% 
+         mutate(rank_prcp_dev = ntile(prec_y_mean_dev_lag, 10)) %>%
+         group_by(rank_prcp_dev) %>% 
+         summarise(M_U_prop       = mean(M_U, na.rm = TRUE)*100, 
+                   M_UIL_prop     = mean(M_UIL, na.rm = TRUE)*100, 
+                   M_UL_prop      = mean(M_UL, na.rm = TRUE)*100, 
+                   norm_dev_prcp  = mean(prec_y_mean_dev_lag, 
+                                         na.rm = TRUE))) + 
+  geom_point(aes(x = norm_dev_prcp, y = M_U_prop,  shape = "Total"), size = 3,
+             color = "black") + 
+  geom_point(aes(x = norm_dev_prcp, y = M_UIL_prop,shape = "Indocumentados"), size = 3,
+             color = "blue") +
+  geom_point(aes(x = norm_dev_prcp, y = M_UL_prop, shape = "Documentados"), size = 3,
+             color = "red") +
+  geom_vline(xintercept = 0) + 
+  geom_vline(xintercept = prec_m_dev, 
+             linetype = "dashed") +
+  scale_shape_manual(name = "", values = c("Total" = 15, 
+                                           "Indocumentados" = 16, 
+                                           "Documentados" = 17)) +
+       guides(shape=
+                guide_legend(override.aes=
+                                   list(color=c("blue","red","black"))))
+```
+
+```{r}
+tmax_plt = ggplot(mmp_com_weather %>% mutate(rank_tmax_dev = ntile(temp_max_y_mean_dev_lag, 10)) %>%
+         group_by(rank_tmax_dev) %>% 
+         summarise(M_U_prop       = mean(M_U, na.rm = TRUE)*100, 
+                   M_UIL_prop     = mean(M_UIL, na.rm = TRUE)*100, 
+                   M_UL_prop      = mean(M_UL, na.rm = TRUE)*100, 
+                   norm_dev_tmax  = mean(temp_max_y_mean_dev_lag, na.rm = TRUE), 
+                   n_obs = n())) + 
+  geom_point(aes(x = norm_dev_tmax, y = M_U_prop,  shape = "Total"), size = 3,
+             color = "black") + 
+  geom_point(aes(x = norm_dev_tmax, y = M_UIL_prop,shape = "Indocumentados"), size = 3,
+             color = "blue") +
+  geom_point(aes(x = norm_dev_tmax, y = M_UL_prop, shape = "Documentados"), size = 3,
+             color = "red") + 
+  geom_vline(xintercept = 0) + 
+    geom_vline(xintercept = tmax_m_dev, 
+             linetype = "dashed") +
+  scale_shape_manual(name = "", values = c("Total" = 15, 
+                                           "Indocumentados" = 16, 
+                                           "Documentados" = 17))  +
+       guides(shape=
+                guide_legend(override.aes=
+                                   list(color=c("blue","red","black"))))
+```
+
+```{r}
+prcp_tmax_plt = ggarrange(prcp_plt + 
+                            ggtitle("Precipitaciones y Migración") + 
+                            labs(y = "Proporción de Migrantes (% de Población)",
+                                 x = "Desvío de la Media Histórica (cl, t-1)"), 
+                          tmax_plt + 
+                            labs(y = "", 
+                                 x = "Desvío de la Media Histórica (ºC, t-1)") + 
+                            ggtitle("Temperatura Máxima y Migración"), 
+          ncol = 2, common.legend = TRUE, legend = "bottom")
+
+prcp_tmax_plt
+```
+
+```{r}
+ggsave(paste0(dir$fig,"prcp_tmax_dev_plt_CAF_post.png"), 
+       width = 9, height = 4.5)
+```
+
+#### Back to English
+```{r}
+tmin_m_dev = mean(mmp_com_weather$temp_min_y_mean_dev_lag, na.rm = T)
+
+tmin_plt = ggplot(mmp_com_weather %>% mutate(rank_tmin_dev = ntile(temp_min_y_mean_dev_lag, 10)) %>%
+         group_by(rank_tmin_dev) %>% 
+         summarise(M_U_prop       = mean(M_U, na.rm = TRUE)*100, 
+                   M_UIL_prop     = mean(M_UIL, na.rm = TRUE)*100, 
+                   M_UL_prop      = mean(M_UL, na.rm = TRUE)*100, 
+                   norm_dev_tmin  = mean(temp_min_y_mean_dev_lag, na.rm = TRUE), 
+                   n_obs = n())) + 
+  geom_point(aes(x = norm_dev_tmin, y = M_U_prop,  shape = "Total"), size = 3,
+             color = "black") + 
+  geom_point(aes(x = norm_dev_tmin, y = M_UIL_prop,shape = "Illegal"), size = 3,
+             color = "blue") +
+  geom_point(aes(x = norm_dev_tmin, y = M_UL_prop, shape = "Legal"), size = 3,
+             color = "red") + 
+  labs(x = "Min Temperature - Deviation Historical Mean (ºC, t-1)", y = "Migration (% of Population)") + 
+  geom_vline(xintercept = 0) + 
+      geom_vline(xintercept = tmin_m_dev, 
+             linetype = "dashed") + 
+  scale_shape_manual(name = "", values = c("Total" = 15, 
+                                           "Illegal" = 16, 
+                                           "Legal" = 17))  +
+       guides(shape=
+                guide_legend(override.aes=
+                                   list(color=c("blue","red","black"))))
+
+tmin_plt + 
+  ggtitle("Min Temperature and Migration")
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmin_dev_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+tmin_plt + 
+  theme(text = element_text(size = 14))
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmin_dev_plt_prest.png"), 
+       width = 7, height = 4.5)
+```
+
+```{r}
+tavg_tmin_plt = ggarrange(tavg_plt + labs(x = "Deviation Historical Mean (ºC, t-1)") + ggtitle("Avg Temperature and Migration"), 
+                          tmin_plt + labs(y = "", x = "Deviation Historical Mean (ºC, t-1)") + ggtitle("Min Temperature and Migration"), 
+          ncol = 2, common.legend = TRUE, legend = "bottom")
+
+tavg_tmin_plt
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tavg_tmin_dev_plt.png"), 
+       width = 9, height = 4.5)
+```
+
+```{r}
+rm(list=ls(patter="plt"))
+```
+
+# Regressions
+
+We regress the migration decision against:
+
+- Yearly (April-September) average of monthly precipitations,
+- Yearly (April-September) average of monthly temperature,
+- Yearly (April-September) average of maximum monthly temperature,
+- Yearly (April-September) average of minimum monthly temperature.
+
+```{r}
+formula = "M_U ~ prec_y_mean_dev_lag | id + year"
+reg_list_imm = list(feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun"))
+
+for (i in c("temp_avg", "temp_max", "temp_min")) {
+formula = paste0("M_U ~ ",i,"_y_mean_dev_lag | id + year")
+  
+reg_round = feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun")
+
+reg_list_imm = c(reg_list_imm, list(reg_round))
+}
+```
+
+And we summaries all the results in the following table:
+```{r}
+setFixest_dict(c(M_U = "Migrant",
+                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)"))
+
+etable(reg_list_imm[1:4],
+         file = paste0(dir$results,"imm_results.txt"), 
+       fitstat=c('n', 'ar2'),
+       replace = TRUE)
+
+etable(reg_list_imm[1:4])
+```
+
+```{r}
+data.frame(marginal_prcp = reg_list_imm[[1]]$coefficients[[1]],
+            marginal_tavg = reg_list_imm[[2]]$coefficients[[1]], 
+            marginal_tmax = reg_list_imm[[3]]$coefficients[[1]], 
+             marginal_tmin = reg_list_imm[[4]]$coefficients[[1]])/prop_migrant[[1,1]]
+```
+
+
+## Illegal Migration
+
+We do the same analysis but only for the illegal migrants:
+```{r}
+formula = "M_UIL ~ prec_y_mean_dev_lag | id + year"
+reg_list_imm_il = list(feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun"))
+
+for (i in c("temp_avg", "temp_max", "temp_min")) {
+formula = paste0("M_UIL ~ ",i,"_y_mean_dev_lag | id + year")
+  
+reg_round = feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun")
+
+reg_list_imm_il = c(reg_list_imm_il, list(reg_round))
+}
+```
+
+And summaries the results:
+```{r}
+setFixest_dict(c(M_UIL = "Illegal Migrant",
+                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)"))
+
+etable(reg_list_imm_il[1:4], 
+       file = paste0(dir$results,"imm_il_results.txt"), 
+       fitstat=c('n', 'ar2'),
+       replace = TRUE)
+
+
+etable(reg_list_imm_il[1:4])
+```
+
+```{r}
+data.frame(marginal_prcp = reg_list_imm_il[[1]]$coefficients[[1]],
+            marginal_tavg = reg_list_imm_il[[2]]$coefficients[[1]], 
+            marginal_tmax = reg_list_imm_il[[3]]$coefficients[[1]], 
+            marginal_tmin = reg_list_imm_il[[4]]$coefficients[[1]])/prop_migrant[[1,2]]
+```
+
+
+```{r}
+beta_hat = data.frame(beta_prcp = reg_list_imm[[1]]$coefficients[[1]],
+            beta_tavg = reg_list_imm[[2]]$coefficients[[1]], 
+            beta_tmax = reg_list_imm[[3]]$coefficients[[1]], 
+            beta_tmin = reg_list_imm[[4]]$coefficients[[1]])
+
+write_csv(beta_hat, file=paste0(dir$constructed_data,"beta_hat.csv"))
+```
+
+```{r}
+beta_var = data.frame(beta_prcp = reg_list_imm[[1]]$se[[1]],
+            beta_tavg = reg_list_imm[[2]]$se[[1]], 
+            beta_tmax = reg_list_imm[[3]]$se[[1]], 
+            beta_tmin = reg_list_imm[[4]]$se[[1]])
+
+write_csv(beta_var, file=paste0(dir$constructed_data,"beta_var.csv"))
+```
+
+
+
+## Legal Migrants
+
+Lastly, we do the analysis for legal Migrants:
+```{r}
+formula = "M_UL ~ prec_y_mean_dev_lag | id + year"
+reg_list_imm_l = list(feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun"))
+
+for (i in c("temp_avg", "temp_max", "temp_min")) {
+formula = paste0("M_UL ~ ",i,"_y_mean_dev_lag | id + year")
+  
+reg_round = feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun")
+
+reg_list_imm_l = c(reg_list_imm_l, list(reg_round))
+}
+```
+
+And summarise the result:
+```{r}
+setFixest_dict(c(M_UL = "Legal Migrant",
+                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)"))
+
+etable(reg_list_imm_l[1:4],
+       file = paste0(dir$results,"imm_l_results.txt"), 
+       fitstat=c('n', 'ar2'),
+       replace = TRUE)
+
+etable(reg_list_imm_l[1:4])
+```
+
+
+```{r}
+setFixest_dict(c(M_UL = "Legal Migrant", M_UIL = "Illegal Migrant",
+                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)")) 
+
+etable(c(reg_list_imm_il[1:4],reg_list_imm_l[1:4]),
+       file = paste0(dir$results,"imm_il_l_results.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+```

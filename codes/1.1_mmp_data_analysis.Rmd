@@ -1,0 +1,231 @@
+---
+title:  "MMP - Data Analysis"
+author: "Facundo Danza & Eungik Lee"
+date:   "`r format(Sys.time(), '%B %e, %Y')`"
+---
+
+# Load Data
+
+First, we clean the R-environment:
+```{r}
+rm(list = ls())
+gc()
+```
+
+Second, we load (and install) the needed packages:
+```{r}
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(tidyverse, data.table, janitor, dplyr, xtable, readr)
+```
+
+
+Lastly, we define the directories:
+```{r}
+dir         <- list()
+dir$root    <- dirname(getwd())
+dir$data    <- paste0(dirname(getwd()), "/data/")
+dir$mmp     <- paste0(dirname(getwd()), "/data/confidential/mmp/")
+dir$tables  <- paste0(dirname(getwd()), "/tables/")
+```
+
+
+
+# Mexican Migration Project (MMP) 
+
+## Load Dataset
+
+First things first. In this section, we load the MMP dataset. We focus on "LIFE," which collects data on the whole history of the head of household.
+
+We do our analysis for surveys 2000 to 2019. We focus only use the years 1990 to 2010 (we leave 1987 for the robustness checks section) and on people at working age (18 to 65).
+```{r, warning=FALSE}
+start_year_sy  = 2000
+end_year_sy    = 2019
+start_year_wv  = 1987 
+end_year_wv    = 2010
+age_lb         = 18
+age_ub         = 65
+
+life = read.csv(paste0(dir$mmp,"life174.csv")) %>% 
+  filter(surveyyr >= start_year_sy &
+           surveyyr <= end_year_sy & 
+           year >= start_year_wv & 
+           year <= end_year_sy & 
+           age >= age_lb &
+           age <= age_ub)
+```
+
+
+## Add variables
+
+In this section, we add some variables of interest to our dataset. 
+
+First, the employment status and US documentation. 
+```{r}
+life = life %>%
+  mutate(doc = ifelse(usdoc == 9999, NA, 
+                      ifelse(usdoc!= 8, 1, 0)),
+         emp = ifelse(occup==9999,NA, 
+                      ifelse(occup > 99 & occup!=8888, 
+                                             1,0)))
+``` 
+
+Second, employment spells:
+```{r}
+life = life %>%
+  mutate(empl_spell = ifelse(jdurtot == 9999, NA, jdurtot))
+```
+
+Third, we add whether the agent is an agricultural (husbandry or fisher) worker:
+```{r}
+life = life %>%
+  mutate(ag_work = (occup >= 410 & occup >= 419),
+         ag_work = ifelse(occup == 9999, NA, ag_work))
+```
+
+Lastly, we add male, education level, land ownership, business ownership, and either ownership:
+```{r}
+life = life %>% 
+  mutate(male = sex == 1, 
+         educ_miss = ifelse(educ == 9999, NA, educ), 
+         land_owner = land > 0,
+         business_owner = business > 0,
+         owner     = as.numeric(land_owner + business_owner > 0))
+```
+
+
+### Workers' States
+
+We add the country in which they are located:
+```{r}
+life = life %>% 
+  mutate(country = ifelse(inus == 1, "U", 
+                          ifelse(is.na(inus), NA, "M")))
+```
+
+We need to define the id (the sum of community and household number) of each agent:
+```{r}
+life = life %>%
+  mutate(id = paste0(commun, hhnum)) 
+
+life = life %>% 
+  arrange(id, year)
+```
+
+Then, we can study the country transitions. We add lagged country.
+```{r}
+life = life %>%
+  group_by(id) %>%
+  mutate(country_lag = lag(country))
+```
+
+Lastly, we create a sequence of dummies which we'll use in our regressions:
+
+- M_U:    Migrants from Mexico to the US
+- M_UIL:  Migrants from Mexico to the US who migrated illegally
+- M_UL:   Migrants from Mexico to the US who migrated legally 
+- U_M:    Returnees from US to Mexico
+
+```{r}
+life = life %>% 
+  ungroup(id)
+
+########### M_U dummy - identifies the migrants from Mexico to US
+life = life %>%
+        mutate(M_U = ifelse(country_lag == "M", 0, NA),
+               M_U = ifelse(country_lag == "M" & country == "U",1, M_U))
+
+########### M_U dummy - identifies the illegal migrants from Mexico to US
+life = life %>%
+        mutate(M_UIL = ifelse(country_lag == "M", 0, NA),
+               M_UIL = ifelse(country_lag == "M" & country == "U" 
+                              & doc == 0,1,M_UIL))
+
+########### M_U dummy - identifies the legal migrants from Mexico to US
+life = life %>%
+        mutate(M_UL = ifelse(country_lag == "M", 0, NA),
+               M_UL = ifelse(country_lag == "M" & country == "U" 
+                              & doc == 1,1,M_UL))
+
+########### U_M dummy - identifies the returnees from US to Mexico
+life = life %>%
+        mutate(U_M = ifelse(country_lag == "U", 0, NA),
+               U_M = ifelse(country_lag == "U" & country == "M",
+                            1,U_M))
+```
+
+
+## Add community identifiers
+
+We now match the "life" dataset with the community identifiers. We later use this to merge with weather data.
+
+First, we load the community identifiers dataset:
+```{r}
+identifiers = read_csv(paste0(dir$mmp,"commun_list.csv"), 
+                       col_types = cols()) %>%
+  clean_names() %>%
+  rename(commun = no,
+         state_name = state)
+
+
+identifiers <- subset(identifiers, select=c("commun", 
+                                            "pop_2010", 
+                                            "state_name", 
+                                            "municipio", 
+                                            "community"))
+
+```
+
+We then merge both datasets (we only keep the rounds which were at Mexico):
+```{r}
+life_ident = left_join(life %>% filter(surveypl==1), 
+                       identifiers,
+          by = c("commun"))
+```
+
+We keep only the communities with less than 500,000 people (in 2010):
+```{r}
+life_ident = life_ident %>%
+  filter(pop_2010 < 500000)
+```
+
+We count the number of communities which that leave us:
+```{r}
+life_ident %>%
+  group_by(commun) %>% summarise(n_obs = n()) %>%
+  nrow()
+```
+
+And the number of municipalities:
+```{r}
+life_ident %>%
+  group_by(municipio, state_name) %>% summarise(n_obs = n()) %>%
+  nrow()
+```
+
+Lastly, we save the data at an individual level.
+```{r}
+write_csv(life_ident, 
+          paste0(dir$data,
+                 "confidential/constructed/mmp_individual_clean.csv"))
+```
+
+We also save only the name of the municipalities and states, which we use later:
+```{r}
+commun_stats = life_ident %>% ungroup() %>%
+                  dplyr::select(state_name, municipio) %>% 
+                  arrange(state_name, municipio) 
+
+write_excel_csv(commun_stats %>% unique(), 
+          paste0(dir$data,
+                    "confidential/constructed/mmp_clean_state_municipio.csv"))
+```
+
+And only the states:
+```{r}
+write_excel_csv(commun_stats %>%
+                  dplyr::select(state_name) %>% 
+                  arrange(state_name) %>% rename(state = state_name) %>% unique(), 
+          paste0(dir$data,
+                    "constructed/mmp_clean_state.csv"))
+```

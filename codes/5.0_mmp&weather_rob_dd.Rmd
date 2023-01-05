@@ -1,0 +1,144 @@
+---
+title:     'MMP and the Weather: Robustness'
+author:    "Facundo Danza & Eungik Lee"
+susbtitle: "Degree-days"
+---
+
+# Pre-analysis
+
+First, we clean the R-environment:
+```{r}
+rm(list = ls())
+gc()
+```
+
+Second, we load (and install) the needed packages:
+```{r}
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(tidyverse, data.table, janitor, dplyr, fixest, 
+               expss, ggpubr, xtable, scales)
+```
+
+Third, we define the `theme_set`:
+```{r}
+theme_set(theme_bw())
+```
+
+Lastly, we set the working directories:
+```{r}
+dir = list()
+dir$root    <- dirname(getwd())
+dir$data    <- paste0(dirname(getwd()), "/data/")
+dir$weather    <- 
+  paste0(dirname(getwd()), "/data/confidential/meteoblue/")
+dir$results    <- paste0(dirname(getwd()), "/tables/robustness/")
+dir$constructed_data    <- 
+  paste0(dirname(getwd()), "/data/confidential/constructed/")
+```
+
+
+# Meteoblue - Weather Data
+
+## Load the data
+
+First, we load the daily weather data (and drop the missing values of it):
+```{r}
+weather_daily = read.csv(paste0(dir$weather, "weather.csv")) %>%
+              filter(!is.na(day))
+```
+
+Since our data is annual rather than daily, we take the average (or sum) of each variable. Furthermore, we only keep the months from April to September, the wet season in Mexico:
+```{r}
+month_start = 4
+month_end   = 9
+
+weather_year = weather_daily %>% 
+  filter(month >= month_start & month <= month_end) %>%
+  mutate(dd_a29    = as.numeric(temp_avg>=29)) %>%
+  group_by(commun, year) %>%
+  summarise(across(starts_with("dd_"), 
+                   sum, .names = "{.col}_y_tot"))
+```
+
+
+```{r}
+rm(weather_daily)
+```
+
+
+# Mexican Migration Project (MMP)
+
+## Load the data
+
+First, we load the data on MMP. We have already cleaned the data (you can find such code as "mmp_data_analysis.Rmd.")
+```{r}
+mmp = read.csv(paste0(dir$constructed_data,
+                      "mmp_individual_clean.csv")) %>%
+  filter(year >= 1989)
+```
+
+
+# Merge MMP and Weather
+
+We, then, merge data on weather with MMP, and keep only the communities with weather data:
+```{r}
+mmp_com_weather = left_join(mmp, 
+                            weather_year, by = c("commun","year")) %>%
+  filter(!is.na(dd_a29_y_tot))
+```
+
+We only keep 10-year windows backwards (we include the 11 year for the regressions and plots we'll run later):
+```{r}
+year_window = 11
+
+mmp_com_weather = mmp_com_weather %>% 
+  filter((surveyyr - year) <= year_window)
+```
+
+
+We also take lag variables, which we believe is the relevant timing for the migration decision:
+```{r}
+mmp_com_weather = mmp_com_weather %>%
+  arrange(id, year)
+
+mmp_com_weather = mmp_com_weather %>%
+  group_by(id) %>%
+  mutate(across(starts_with("dd_"), ~ lag(.x),
+                .names = "{.col}_lag")) %>% ungroup()
+```
+
+# Regressions
+
+We regress the migration decision against:
+
+- Yearly (April-September) days above 29ºC
+
+```{r}
+formula = "M_U ~ dd_a29_y_tot_lag | id + year"
+reg_list_imm = list(feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun"))
+
+formula = "M_UIL ~ dd_a29_y_tot_lag | id + year"
+reg_list_imm = c(reg_list_imm,list(feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun")))
+
+formula = "M_UL ~ dd_a29_y_tot_lag | id + year"
+reg_list_imm = c(reg_list_imm,list(feols(as.formula(formula), 
+      data = mmp_com_weather, se = 'cluster', cluster = "commun")))
+```
+
+And we summaries all the results in the following table:
+```{r}
+setFixest_dict(c(M_U = "Migrant",
+                 M_UIL = "Illegal Migrant",
+                 M_UL = "Legal Migrant",
+                 dd_a29_y_tot_lag       =  "Days Above 29ºC (#, t-1)"))
+
+etable(reg_list_imm,
+          file = paste0(dir$results,"imm_excess_heat.txt"), 
+        fitstat=c('n', 'ar2'),
+        replace = TRUE)
+
+etable(reg_list_imm[1:3])
+```
