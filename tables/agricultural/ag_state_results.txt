@@ -1,29 +1,31 @@
 
 \begingroup
 \centering
-\begin{tabular}{lcccccc}
+\begin{tabular}{lcccccccc}
    \tabularnewline \midrule \midrule
-   Dependent Variables: & \multicolumn{3}{c}{Log (Harv Area) - Ha} & \multicolumn{3}{c}{Log (Corn Prod) - Gr, Ton}\\
-   Model:                & (1)            & (2)             & (3)             & (4)            & (5)            & (6)\\  
+   Dependent Variables: & \multicolumn{4}{c}{Log (Harv Area) - Ha} & \multicolumn{4}{c}{Log (Corn Prod) - Gr, Ton}\\
+   Model:                     & (1)            & (2)             & (3)             & (4)             & (5)            & (6)             & (7)             & (8)\\  
    \midrule
    \emph{Variables}\\
-   Dev Precipiation (cl) & 0.0060$^{***}$ &                 &                 & 0.0075$^{***}$ &                &   \\   
-                         & (0.0008)       &                 &                 & (0.0011)       &                &   \\   
-   Dev Max Temp (ºC)     &                & -0.0116$^{***}$ &                 &                & -0.0114$^{**}$ &   \\   
-                         &                & (0.0033)        &                 &                & (0.0047)       &   \\   
-   Dev Min Temp (ºC)     &                &                 & -0.0126$^{***}$ &                &                & -0.0152$^{**}$\\   
-                         &                &                 & (0.0039)        &                &                & (0.0062)\\   
+   Dev Precipiation (Z-score) & 0.0445$^{***}$ &                 &                 &                 & 0.0494$^{***}$ &                 &                 &   \\   
+                              & (0.0042)       &                 &                 &                 & (0.0052)       &                 &                 &   \\   
+   Dev Avg Temp (Z-score)     &                & -0.0339$^{***}$ &                 &                 &                & -0.0444$^{***}$ &                 &   \\   
+                              &                & (0.0050)        &                 &                 &                & (0.0068)        &                 &   \\   
+   Dev Max Temp (Z-score)     &                &                 & -0.0206$^{***}$ &                 &                &                 & -0.0216$^{***}$ &   \\   
+                              &                &                 & (0.0045)        &                 &                &                 & (0.0063)        &   \\   
+   Dev Min Temp (Z-score)     &                &                 &                 & -0.0131$^{***}$ &                &                 &                 & -0.0218$^{***}$\\   
+                              &                &                 &                 & (0.0048)        &                &                 &                 & (0.0064)\\   
    \midrule
    \emph{Fixed-effects}\\
-   id                    & Yes            & Yes             & Yes             & Yes            & Yes            & Yes\\  
-   year                  & Yes            & Yes             & Yes             & Yes            & Yes            & Yes\\  
+   id                         & Yes            & Yes             & Yes             & Yes             & Yes            & Yes             & Yes             & Yes\\  
+   year                       & Yes            & Yes             & Yes             & Yes             & Yes            & Yes             & Yes             & Yes\\  
    \midrule
    \emph{Fit statistics}\\
-   Observations          & 32,847         & 32,847          & 32,847          & 31,998         & 31,998         & 31,998\\  
-   Adjusted R$^2$        & 0.90471        & 0.90454         & 0.90453         & 0.89528        & 0.89507        & 0.89508\\  
+   Observations               & 32,847         & 32,847          & 32,847          & 32,847          & 31,998         & 31,998          & 31,998          & 31,998\\  
+   Adjusted R$^2$             & 0.90513        & 0.90471         & 0.90459         & 0.90451         & 0.89558        & 0.89530         & 0.89511         & 0.89510\\  
    \midrule \midrule
-   \multicolumn{7}{l}{\emph{Clustered (id) standard-errors in parentheses}}\\
-   \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \multicolumn{9}{l}{\emph{Clustered (id) standard-errors in parentheses}}\\
+   \multicolumn{9}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
 \end{tabular}
 \par\endgroup
 

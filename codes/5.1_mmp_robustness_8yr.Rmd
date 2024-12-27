@@ -1,6 +1,7 @@
 ---
-title:  'MMP and the Weather: Individual + Yearly Data'
+title:  'MMP and the Weather'
 author: "Facundo Danza & Eungik Lee"
+subtitle: "Robustness: 8-year windows"
 ---
 
 # Pre-analysis
@@ -22,7 +23,6 @@ Define the `theme_set`
 ```{r}
 theme_set(theme_bw())
 ```
-
 
 Lastly, we set the directories in which we have the data:
 ```{r}
@@ -69,7 +69,9 @@ weather_year = weather_daily %>%
 ## Load the data
 We first load the data on MMP. We have already clean the data - you can find the code as "mmp_data_analysis.Rmd."
 ```{r}
-mmp = read.csv(paste0(dir$constructed_data,"mmp_individual_clean.csv")) 
+mmp = 
+  read.csv(paste0(dir$constructed_data,"mmp_individual_clean.csv")) %>%
+  filter(year >= 1989 &  pop_2010 <= 100000)
 ```
 
 
@@ -95,22 +97,23 @@ mmp_com_weather = mmp_com_weather %>%
 ```
 
 
-## Normalize Weather
+## Standarized Weather
 
-First we need to "normalize" our weather data. That is, we find the historical average over the period 1985-2014:
+First we need to "standarized" our weather data. That is, we find the historical average and standard deviation over the period 1985-2019:
 ```{r}
 start_yr_hist = 1985
-end_yr_hist   = 2014
+end_yr_hist   = 2019
 
 weather_norm = weather_year %>%
   filter(year <= end_yr_hist & year >= start_yr_hist) %>%
   group_by(commun) %>%
   summarise(across(ends_with("y_mean"),
-                   mean, .names = "{.col}_hist"))
+                   mean, .names = "{.col}_hist"), 
+            across(ends_with("y_mean"),
+                   sd, .names = "{.col}_sd_hist"))
 ```
 
-
-We add this "normalized" dataset to the pre-existing one. Furthermoe, we only keep 8-year windows backward:
+We add this "normalized" dataset to the pre-existing one. Furthermore, we only keep 8-year windows backward:
 ```{r}
 year_window = 9
 mmp_com_weather = left_join(mmp_com_weather, 
@@ -121,25 +124,18 @@ mmp_com_weather = mmp_com_weather %>%
 ```
 
 
-We then proceed by taking the deviations for each weather variable with respect to its historical mean. Specifically, we define deviations:
-
-- In cl for precipitations
-
-- In ºC for temperature variables
-
+We then proceed by taking the z-score for each weather variable with respect to its:
 ```{r}
-for (i in c("prec_y","temp_avg_y","temp_max_y","temp_min_y")) {
-  name1 = paste0(i,"_mean")
-  name2 = paste0(i,"_mean_hist")
-  name3 = paste0(i,"_mean_dev")
-  mmp_com_weather = cbind(mmp_com_weather,
-                          mmp_com_weather[[name1]] - mmp_com_weather[[name2]])
-  names(mmp_com_weather)[ncol(mmp_com_weather)] <- name3
-}
-
-# Re-write for precipitation
-mmp_com_weather = mmp_com_weather %>%
-  mutate(prec_y_mean_dev = prec_y_mean_dev/10)
+mmp_com_weather = 
+  mmp_com_weather %>% 
+  mutate(prec_y_mean_dev = 
+           (prec_y_mean - prec_y_mean_hist)/prec_y_mean_sd_hist, 
+         temp_avg_y_mean_dev = 
+           (temp_avg_y_mean - temp_avg_y_mean_hist)/temp_avg_y_mean_sd_hist, 
+         temp_max_y_mean_dev = 
+           (temp_max_y_mean - temp_max_y_mean_hist)/temp_max_y_mean_sd_hist, 
+         temp_min_y_mean_dev = 
+           (temp_min_y_mean - temp_min_y_mean_hist)/temp_min_y_mean_sd_hist)
 ```
 
 We also take the lag variables, which we believe is the relevant timing for the migration decision,
@@ -168,12 +164,12 @@ mmp_com_weather %>% ungroup() %>%
 
 ## Regressions
 
-We run the regressions for those communities for which we have weather data. We regress the migration decision against:
+We regress migration decision against the z-score of:
 
-- Yearly (April-September) average of monthly precipitations,
-- Yearly (April-September) average of monthly temperature,
-- Yearly (April-September) average of maximum monthly temperature,
-- Yearly (April-September) average of minimum monthly temperature.
+- Yearly (April-September) precipitations,
+- Yearly (April-September) average temperature,
+- Yearly (April-September) maximum temperature,
+- Yearly (April-September) minimum temperature.
 
 ```{r}
 formula = "M_U ~ prec_y_mean_dev_lag | id + year"
@@ -193,10 +189,10 @@ reg_list_imm = c(reg_list_imm, list(reg_round))
 And we summaries all the results in the following table:
 ```{r}
 setFixest_dict(c(M_U = "Migrant",
-                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
-                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
-                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
-                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)"))
+                 prec_y_mean_dev_lag     = "Dev Precipitation (Z-score, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (Z-score, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (Z-score, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (Z-score, t-1)"))
 
 etable(reg_list_imm[1:4],
          file = paste0(dir$results,"imm_8yr.txt"), 
@@ -228,10 +224,10 @@ reg_list_imm_il = c(reg_list_imm_il, list(reg_round))
 And summaries the results:
 ```{r}
 setFixest_dict(c(M_UIL = "Illegal Migrant",
-                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
-                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
-                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
-                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)"))
+                 prec_y_mean_dev_lag     = "Dev Precipitation (Z-score, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (Z-score, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (Z-score, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (Z-score, t-1)"))
 
 # etable(reg_list_imm_il[1:4], 
 #        file = paste0(dir$results,"imm_il_8yr.txt"), 
@@ -264,10 +260,10 @@ reg_list_imm_l = c(reg_list_imm_l, list(reg_round))
 And summarise the result:
 ```{r}
 setFixest_dict(c(M_UL = "Legal Migrant",
-                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
-                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
-                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
-                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)"))
+                 prec_y_mean_dev_lag     = "Dev Precipitation (Z-score, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (Z-score, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (Z-score, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (Z-score, t-1)"))
 
 # etable(reg_list_imm_l[1:4],
 #        file = paste0(dir$results,"imm_l_8yr.txt"), 
@@ -280,10 +276,10 @@ etable(reg_list_imm_l[1:4])
 
 ```{r}
 setFixest_dict(c(M_UL = "Legal Migrant", M_UIL = "Illegal Migrant",
-                 prec_y_mean_dev_lag     = "Dev Precipitation (cl, t-1)", 
-                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (ºC, t-1)",
-                 temp_max_y_mean_dev_lag = "Dev Max Temp (ºC, t-1)",
-                 temp_min_y_mean_dev_lag = "Dev Min Temp (ºC, t-1)")) 
+                 prec_y_mean_dev_lag     = "Dev Precipitation (Z-score, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (Z-score, t-1)",
+                 temp_max_y_mean_dev_lag = "Dev Max Temp (Z-score, t-1)",
+                 temp_min_y_mean_dev_lag = "Dev Min Temp (Z-score, t-1)")) 
 
 etable(c(reg_list_imm_il[1:4],reg_list_imm_l[1:4]),
        file = paste0(dir$results,"imm_il_l_8yr.txt"),

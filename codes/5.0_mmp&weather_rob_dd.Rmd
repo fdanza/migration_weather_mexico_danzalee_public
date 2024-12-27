@@ -75,7 +75,7 @@ First, we load the data on MMP. We have already cleaned the data (you can find s
 ```{r}
 mmp = read.csv(paste0(dir$constructed_data,
                       "mmp_individual_clean.csv")) %>%
-  filter(year >= 1989)
+  filter(year >= 1989 &  pop_2010 <= 100000)
 ```
 
 

@@ -1,7 +1,6 @@
 ---
 title:  "MMP - Data Analysis"
 author: "Facundo Danza & Eungik Lee"
-date:   "`r format(Sys.time(), '%B %e, %Y')`"
 ---
 
 # Load Data
@@ -19,7 +18,6 @@ if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, data.table, janitor, dplyr, xtable, readr)
 ```
 
-
 Lastly, we define the directories:
 ```{r}
 dir         <- list()
@@ -30,19 +28,18 @@ dir$tables  <- paste0(dirname(getwd()), "/tables/")
 ```
 
 
-
 # Mexican Migration Project (MMP) 
 
 ## Load Dataset
 
 First things first. In this section, we load the MMP dataset. We focus on "LIFE," which collects data on the whole history of the head of household.
 
-We do our analysis for surveys 2000 to 2019. We focus only use the years 1990 to 2010 (we leave 1987 for the robustness checks section) and on people at working age (18 to 65).
+We do our analysis for surveys 2000 to 2019. We focus only use the years 1990 to 2019 (we leave 1985 for the robustness checks section) and on people at working age (18 to 65).
 ```{r, warning=FALSE}
 start_year_sy  = 2000
 end_year_sy    = 2019
-start_year_wv  = 1987 
-end_year_wv    = 2010
+start_year_wv  = 1985 
+end_year_wv    = 2019
 age_lb         = 18
 age_ub         = 65
 
@@ -157,12 +154,12 @@ life = life %>%
 
 ## Add community identifiers
 
-We now match the "life" dataset with the community identifiers. We later use this to merge with weather data.
+We now match the "life" dataset with the community identifiers. We later use this information to merge our dataset with weather data.
 
 First, we load the community identifiers dataset:
 ```{r}
-identifiers = read_csv(paste0(dir$mmp,"commun_list.csv"), 
-                       col_types = cols()) %>%
+identifiers = 
+  read_csv(paste0(dir$mmp,"commun_list.csv")) %>%
   clean_names() %>%
   rename(commun = no,
          state_name = state)
@@ -173,7 +170,6 @@ identifiers <- subset(identifiers, select=c("commun",
                                             "state_name", 
                                             "municipio", 
                                             "community"))
-
 ```
 
 We then merge both datasets (we only keep the rounds which were at Mexico):
@@ -196,10 +192,11 @@ life_ident %>%
   nrow()
 ```
 
-And the number of municipalities:
+and the number of municipalities:
 ```{r}
 life_ident %>%
-  group_by(municipio, state_name) %>% summarise(n_obs = n()) %>%
+  group_by(municipio, state_name) %>% 
+  summarise(n_obs = n()) %>%
   nrow()
 ```
 

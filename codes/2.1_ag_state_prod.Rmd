@@ -55,6 +55,10 @@ mmp_state_weather = left_join(mmp_state_weather, mmp_state_round,
                             by = c("state", "municipio", "year","month","n_obs"))
 }
 
+mmp_state_weather = 
+  mmp_state_weather %>% 
+  mutate(tavg = (tmax_avg + tmin_avg)/2)
+
 rm(list = c("mmp_state_tmax", "mmp_state_round"))
 ```
 
@@ -79,52 +83,49 @@ rm(mmp_state_weather)
 
 
 ## Normalize Data
-As before, we need to "normalize" our dataset. We do so by taking the historical average over the period 1985-2014:
+As before, we need to "standarized" our dataset. We do so by taking the historical average and standard over the period 1985-2019:
 ```{r}
 start_yr_hist = 1985
-end_yr_hist   = 2014
+end_yr_hist   = 2019
 
 weather_norm = mmp_state_weather_yr %>%
   filter(year <= end_yr_hist & year >= start_yr_hist) %>%
   group_by(municipio, state) %>%
   summarise(across(ends_with("y_mean"),
-                   mean, .names = "{.col}_hist"))
+                   mean, .names = "{.col}_hist"), 
+            across(ends_with("y_mean"),
+                   sd, .names = "{.col}_sd_hist"))
 ```
 
-We then proceed by taking the deviations for the historical mean of:
 
-- Precipitation in cl
-
-- Temperature in ºC
-
-
+We then proceed by taking the deviations for the z-scores of precipitation and temperature
 ```{r}
 mmp_state_weather_yr = mmp_state_weather_yr %>% 
   left_join(weather_norm, by = c("municipio", "state"))
 
-for (i in c("prcp_y","tmax_y","tmin_y")) {
-  name1 = paste0(i,"_mean")
-  name2 = paste0(i,"_mean_hist")
-  name3 = paste0(i,"_mean_dev")
-  mmp_state_weather_yr = cbind(mmp_state_weather_yr,
-                          mmp_state_weather_yr[[name1]] - mmp_state_weather_yr[[name2]])
-  names(mmp_state_weather_yr)[ncol(mmp_state_weather_yr)] <- name3
-}
-
-# Modify the precipitation
-mmp_state_weather_yr = mmp_state_weather_yr %>%
-  mutate(prcp_y_mean_dev = prcp_y_mean_dev/10)
+mmp_state_weather_yr = 
+  mmp_state_weather_yr %>% 
+  mutate(prcp_y_mean_dev = 
+           (prcp_y_mean - prcp_y_mean_hist)/prcp_y_mean_sd_hist, 
+         tavg_y_mean_dev = 
+           (tavg_y_mean - tavg_y_mean_hist)/tavg_y_mean_sd_hist, 
+         tmax_y_mean_dev = 
+           (tmax_y_mean - tmax_y_mean_hist)/tmax_y_mean_sd_hist, 
+         tmin_y_mean_dev = 
+           (tmin_y_mean - tmin_y_mean_hist)/tmin_y_mean_sd_hist)
 ```
+
 ```{r}
 rm(weather_norm)
 ```
-
 
 # Agricultural Data
 
 ## Totals
 
-We load the total agricultural data. First, let's load the total plantation and harvested areas:
+We load the agricultural data. 
+
+First, let's load the total plantation and harvested area:
 ```{r}
 total_prod_round = read_xls(paste0(dir$ag, "all/","ag_totals_2003.xls")) 
 total_prod_round = total_prod_round[8:nrow(total_prod_round),2:ncol(total_prod_round)]
@@ -197,7 +198,6 @@ corn_grain = rbind(corn_grain, corn_round)
 corn_grain = corn_grain %>% group_by(state, municipio) %>%
   arrange(year, .by_group = T)
 ```
-
 
 We re-name corn as corn for grain, just to be more explicit:
 ```{r}
@@ -304,7 +304,8 @@ prcp_harv_plt = ggplot(mmp_state_ag %>% filter(harvested_ha != 0) %>%
   geom_point(shape = 15, size = 3, 
              color = "black")  + 
   geom_smooth(color = "darkgreen") +
-  labs(x = "Precipitation (cl) - Deviation Historical Mean", y = "Harvested Area - Deviation Historical Mean (%)") + 
+  labs(x = "Precipitation - Deviation (z-score)", 
+       y = "Harvested Area - Deviation Historical Mean (%)") + 
   geom_vline(xintercept = 0) + 
   geom_vline(xintercept = prec_m_dev, 
              linetype = "dashed") 
@@ -344,7 +345,8 @@ tmax_harv_plt = ggplot(mmp_state_ag %>% filter(harvested_ha != 0) %>%
   geom_point(shape = 15, size = 3, 
              color = "black")  + 
   geom_smooth(color = "darkgreen") + 
-  labs(x = "Max Temperature (ºC) - Deviation Historical Mean", y = "Harvested Area - Deviation Historical Mean (%)") +
+  labs(x = "Max Temperature - Deviation Z-score", 
+       y = "Harvested Area - Deviation Historical Mean (%)") +
   geom_vline(xintercept = 0) + 
   geom_vline(xintercept = tmax_m_dev, 
              linetype = "dashed") 
@@ -358,6 +360,7 @@ tmax_harv_plt +
 ggsave(paste0(dir$fig,"tmax_dev_harv_state_plt.png"), 
        width = 7, height = 4.5)
 ```
+
 ```{r}
 tmax_harv_plt + 
   theme(text = element_text(size = 14))
@@ -369,13 +372,16 @@ ggsave(paste0(dir$fig,"tmax_dev_harv_state_plt_prest.png"),
 ```
 
 ```{r}
-prcp_tmax_plt = ggarrange(prcp_harv_plt + ggtitle("Precipitation and Harvested Land") + labs(x = "Deviation Historical Mean (cl)"), 
-                          tmax_harv_plt + labs(y = "", x = "Deviation Historical Mean (ºC)") + ggtitle("Max Temperature and Harvested Land"), 
-          ncol = 2, common.legend = TRUE, legend = "bottom")
+prcp_tmax_plt = ggarrange(prcp_harv_plt + 
+                            ggtitle("Precipitation and Harvested Land") +
+                            labs(x = "Precipitation - Deviation (Z-score)"), 
+                          tmax_harv_plt + 
+                            labs(y = "", x = "Max Temperature - Deviation (Z-score)") +
+                            ggtitle("Max Temperature and Harvested Land"), 
+                          ncol = 2, common.legend = TRUE, legend = "bottom")
 
 prcp_tmax_plt
 ```
-
 
 ```{r}
 ggsave(paste0(dir$fig,"prcp_tmax_dev_harv_state_plt.png"), 
@@ -396,7 +402,8 @@ tmin_harv_plt = ggplot(mmp_state_ag %>% filter(harvested_ha != 0) %>%
   geom_point(shape = 15, size = 3, 
              color = "black")  + 
   geom_smooth(color = "darkgreen") + 
-  labs(x = "Min Temperature - Deviation Historical Mean (ºC)", y = "Harvested Area - Deviation Historical Mean (%)") +
+  labs(x = "Min Temperature - Deviation (Z-score)", 
+       y = "Harvested Area - Deviation Historical Mean (%)") +
   geom_vline(xintercept = 0) + 
   geom_vline(xintercept = tmin_m_dev, 
              linetype = "dashed") 
@@ -421,9 +428,12 @@ ggsave(paste0(dir$fig,"tmin_dev_harv_state_plt_prest.png"),
        width = 7, height = 4.5)
 ```
 
+
 # Regressions
 
-## Totals
+## First Specification
+
+### Totals
 
 We then run the regressions:
 ```{r}
@@ -435,7 +445,7 @@ regression = feols(as.formula(formula),
       data = mmp_state_ag, se = 'cluster', cluster = "id")
 regression_list_tot = list(regression)
 
-for (i in c("tmax", "tmin")) {
+for (i in c("tavg", "tmax", "tmin")) {
 formula = paste0("log(harvested_ha) ~ ",i,"_y_mean_dev | id + year")
 regression = feols(as.formula(formula), 
       data = mmp_state_ag, se = 'cluster', cluster = "id")
@@ -445,9 +455,10 @@ regression_list_tot = c(regression_list_tot,list(regression))
 
 ```{r}
 setFixest_dict(c(`log(harvested_ha)` = "Log (Harv Area) - Ha",
-                 prcp_y_mean_dev   = "Dev Precipiation (cl)", 
-                 tmax_y_mean_dev   = "Dev Max Temp (ºC)",
-                 tmin_y_mean_dev   = "Dev Min Temp (ºC)"))
+                 prcp_y_mean_dev   = "Dev Precipiation (Z-score)", 
+                 tavg_y_mean_dev   = "Dev Avg Temp (Z-score)",
+                 tmax_y_mean_dev   = "Dev Max Temp (Z-score)",
+                 tmin_y_mean_dev   = "Dev Min Temp (Z-score)"))
 
 etable(regression_list_tot[1:4], 
        file = paste0(dir$results,"harv_state_results.txt"),
@@ -457,14 +468,15 @@ etable(regression_list_tot[1:4])
 ```
 
 
-## Corn Production - Grain
+### Corn Production - Grain
+
 ```{r}
 formula = "log(prod_corn_ton_gr) ~ prcp_y_mean_dev | id + year"
 regression = feols(as.formula(formula), 
       data = mmp_state_ag, se = 'cluster', cluster = "id")
 regression_list_corn = list(regression)
 
-for (i in c("tmax", "tmin")) {
+for (i in c("tavg", "tmax", "tmin")) {
 formula = paste0("log(prod_corn_ton_gr) ~ ",i,"_y_mean_dev | id + year")
 
 regression = feols(as.formula(formula), 
@@ -476,9 +488,10 @@ regression_list_corn = c(regression_list_corn,list(regression))
 ```{r}
 setFixest_dict(c(`log(prod_corn_ton_gr)` = "Log (Corn Prod) - Gr, Ton",
                  `log(harvested_ha)`  = "Log (Harv Area) - Ha",
-                 prcp_y_mean_dev   = "Dev Precipiation (cl)", 
-                 tmax_y_mean_dev   = "Dev Max Temp (ºC)",
-                 tmin_y_mean_dev   = "Dev Min Temp (ºC)"))
+                 prcp_y_mean_dev   = "Dev Precipiation (Z-score)", 
+                 tavg_y_mean_dev   = "Dev Avg Temp (Z-score)", 
+                 tmax_y_mean_dev   = "Dev Max Temp (Z-score)",
+                 tmin_y_mean_dev   = "Dev Min Temp (Z-score)"))
 
 etable(regression_list_corn[1:4], 
        file = paste0(dir$results,"corn_state_results.txt"),
@@ -491,4 +504,127 @@ etable(regression_list_corn[1:4])
 etable(c(regression_list_tot[1:4],regression_list_corn[1:4]), 
        file = paste0(dir$results,"ag_state_results.txt"),
        fitstat=c('n', 'ar2'), replace = TRUE)
+```
+
+## Second Specification
+
+```{r}
+mmp_state_ag = 
+  mmp_state_ag %>%
+  mutate(across(ends_with("y_mean_dev"), 
+                ~ .x^2, 
+                .names = "{.col}_2"))
+```
+
+
+```{r}
+formula = "log(harvested_ha) ~ prcp_y_mean_dev + prcp_y_mean_dev_2  | id + year"
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_tot = list(regression)
+
+for (i in c("tavg", "tmax", "tmin")) {
+formula = paste0("log(harvested_ha) ~ ",i,"_y_mean_dev", 
+                 " + " , i , "_y_mean_dev_2 ", "| id + year")
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_tot = c(regression_list_tot,list(regression))
+}
+```
+
+```{r}
+setFixest_dict(c(`log(harvested_ha)` = "Log (Harv Area) - Ha",
+                 prcp_y_mean_dev   = "Dev Precipiation (Z-score)", 
+                 tavg_y_mean_dev   = "Dev Avg Temp (Z-score)",
+                 tmax_y_mean_dev   = "Dev Max Temp (Z-score)",
+                 tmin_y_mean_dev   = "Dev Min Temp (Z-score)", 
+                 prcp_y_mean_dev_2   = "Dev Precipiation Sq (Z-score)", 
+                 tavg_y_mean_dev_2   = "Dev Avg Temp Sq (Z-score)",
+                 tmax_y_mean_dev_2   = "Dev Max Temp Sq (Z-score)",
+                 tmin_y_mean_dev_2   = "Dev Min Temp Sq (Z-score)"))
+
+etable(regression_list_tot[1:4], 
+       file = paste0(dir$results,"harv_state_results_nl.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+
+etable(regression_list_tot[1:4])
+```
+
+
+### Corn Production - Grain
+
+```{r}
+formula = "log(prod_corn_ton_gr) ~ prcp_y_mean_dev + prcp_y_mean_dev_2  | id + year"
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_corn = list(regression)
+
+for (i in c("tavg", "tmax", "tmin")) {
+formula = paste0("log(prod_corn_ton_gr) ~ ",i,"_y_mean_dev", 
+                 " + " , i , "_y_mean_dev_2 ", "| id + year")
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list_corn = c(regression_list_corn,list(regression))
+}
+```
+
+```{r}
+setFixest_dict(c(`log(prod_corn_ton_gr)` = "Log (Corn Prod) - Gr, Ton",
+                 prcp_y_mean_dev   = "Dev Precipiation (Z-score)", 
+                 tavg_y_mean_dev   = "Dev Avg Temp (Z-score)",
+                 tmax_y_mean_dev   = "Dev Max Temp (Z-score)",
+                 tmin_y_mean_dev   = "Dev Min Temp (Z-score)", 
+                 prcp_y_mean_dev_2   = "Dev Precipiation Sq (Z-score)", 
+                 tavg_y_mean_dev_2   = "Dev Avg Temp Sq (Z-score)",
+                 tmax_y_mean_dev_2   = "Dev Max Temp Sq (Z-score)",
+                 tmin_y_mean_dev_2   = "Dev Min Temp Sq (Z-score)"))
+
+etable(regression_list_corn[1:4], 
+       file = paste0(dir$results,"corn_state_results_nl.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+
+etable(regression_list_corn[1:4])
+```
+
+```{r}
+etable(c(regression_list_tot[1:4],regression_list_corn[1:4]), 
+       file = paste0(dir$results,"ag_state_results_nl.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+```
+
+
+## Third specification
+```{r}
+formula = "log(harvested_ha) ~ prcp_y_mean_dev*tavg_y_mean_dev + prcp_y_mean_dev_2 + tavg_y_mean_dev_2  | id + year"
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list = list(regression)
+
+
+for (i in c("prod_corn_ton_gr")) {
+formula = paste0("log(", i, ")", " ~ prcp_y_mean_dev*tavg_y_mean_dev + prcp_y_mean_dev_2 + tavg_y_mean_dev_2",
+                 "| id + year")
+regression = feols(as.formula(formula), 
+      data = mmp_state_ag, se = 'cluster', cluster = "id")
+regression_list = c(regression_list,list(regression))
+}
+```
+
+```{r}
+setFixest_dict(c(`log(harvested_ha)` = "Log (Harv Area) - Ha",
+                 `log(prod_corn_ton_gr)` = "Log (Corn Prod) - Gr, Ton",
+                 prcp_y_mean_dev   = "Dev Precipiation", 
+                 tavg_y_mean_dev   = "Dev Avg Temp",
+                 tmax_y_mean_dev   = "Dev Max Temp",
+                 tmin_y_mean_dev   = "Dev Min Temp", 
+                 prcp_y_mean_dev_2   = "Dev Precipiation Sq", 
+                 tavg_y_mean_dev_2   = "Dev Avg Temp Sq",
+                 tmax_y_mean_dev_2   = "Dev Max Temp Sq",
+                 tmin_y_mean_dev_2   = "Dev Min Temp Sq"))
+
+etable(regression_list[1:4], 
+       file = paste0(dir$results,"ag_state_results_inter.txt"),
+       fitstat=c('n', 'ar2'), replace = TRUE)
+
+etable(regression_list[1:4])
 ```

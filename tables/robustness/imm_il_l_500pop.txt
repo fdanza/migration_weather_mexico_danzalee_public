@@ -1,0 +1,32 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccccccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variables: & \multicolumn{4}{c}{Illegal Migrant} & \multicolumn{4}{c}{Legal Migrant}\\
+   Model:                           & (1)            & (2)            & (3)            & (4)            & (5)           & (6)                    & (7)                   & (8)\\  
+   \midrule
+   \emph{Variables}\\
+   Dev Precipitation (Z-score, t-1) & -0.0007$^{**}$ &                &                &                & -0.0003$^{*}$ &                        &                       &   \\   
+                                    & (0.0004)       &                &                &                & (0.0002)      &                        &                       &   \\   
+   Dev Avg Temp (Z-score, t-1)      &                & 0.0033$^{***}$ &                &                &               & $-9.65\times 10^{-5}$  &                       &   \\   
+                                    &                & (0.0004)       &                &                &               & (0.0002)               &                       &   \\   
+   Dev Max Temp (Z-score, t-1)      &                &                & 0.0034$^{***}$ &                &               &                        & $6.25\times 10^{-6}$  &   \\   
+                                    &                &                & (0.0004)       &                &               &                        & (0.0002)              &   \\   
+   Dev Min Temp (Z-score, t-1)      &                &                &                & 0.0031$^{***}$ &               &                        &                       & $-5.16\times 10^{-5}$\\    
+                                    &                &                &                & (0.0004)       &               &                        &                       & (0.0002)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   id                               & Yes            & Yes            & Yes            & Yes            & Yes           & Yes                    & Yes                   & Yes\\  
+   year                             & Yes            & Yes            & Yes            & Yes            & Yes           & Yes                    & Yes                   & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                     & 121,298        & 121,298        & 121,298        & 121,298        & 121,298       & 121,298                & 121,298               & 121,298\\  
+   Adjusted R$^2$                   & 0.18051        & 0.18130        & 0.18117        & 0.18103        & 0.40721       & 0.40720                & 0.40719               & 0.40719\\  
+   \midrule \midrule
+   \multicolumn{9}{l}{\emph{Clustered (commun) standard-errors in parentheses}}\\
+   \multicolumn{9}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

@@ -1,0 +1,40 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{Log (Harv Area) - Ha}\\
+   Model:                        & (1)             & (2)             & (3)             & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   Dev Precipiation (Z-score)    & 0.0488$^{***}$  &                 &                 &   \\   
+                                 & (0.0046)        &                 &                 &   \\   
+   Dev Precipiation Sq (Z-score) & -0.0084$^{***}$ &                 &                 &   \\   
+                                 & (0.0019)        &                 &                 &   \\   
+   Dev Avg Temp (Z-score)        &                 & -0.0319$^{***}$ &                 &   \\   
+                                 &                 & (0.0050)        &                 &   \\   
+   Dev Avg Temp Sq (Z-score)     &                 & -0.0098$^{***}$ &                 &   \\   
+                                 &                 & (0.0023)        &                 &   \\   
+   Dev Max Temp (Z-score)        &                 &                 & -0.0184$^{***}$ &   \\   
+                                 &                 &                 & (0.0045)        &   \\   
+   Dev Max Temp Sq (Z-score)     &                 &                 & -0.0051$^{**}$  &   \\   
+                                 &                 &                 & (0.0023)        &   \\   
+   Dev Min Temp (Z-score)        &                 &                 &                 & -0.0146$^{***}$\\   
+                                 &                 &                 &                 & (0.0049)\\   
+   Dev Min Temp Sq (Z-score)     &                 &                 &                 & -0.0080$^{***}$\\   
+                                 &                 &                 &                 & (0.0021)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   id                            & Yes             & Yes             & Yes             & Yes\\  
+   year                          & Yes             & Yes             & Yes             & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                  & 32,847          & 32,847          & 32,847          & 32,847\\  
+   Adjusted R$^2$                & 0.90519         & 0.90476         & 0.90460         & 0.90456\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (id) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

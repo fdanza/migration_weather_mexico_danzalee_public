@@ -54,7 +54,7 @@ mx_mun = st_read(paste0(dir$mun,"mex_admbnda_govmex_20210618_SHP",
   dplyr::select(municipio, state)
 ```
 
-We then "clean" such data. Specifically, we change the names of some states and muncipios:
+We then "clean" such data. Specifically, we change the names of some states and municipios:
 ```{r}
 mx_mun = mx_mun %>% 
   mutate(state = 

@@ -34,6 +34,7 @@ dir$meteoblue    <-
 dir$mmp_final    <- 
   paste0(dirname(getwd()), "/data/confidential/constructed/")
 dir$results      <- paste0(dirname(getwd()), "/tables/projection/")
+dir$fig          <- paste0(dirname(getwd()), "/figures/climate_change/")
 ```
 
 
@@ -67,6 +68,7 @@ month_end   = 9
 
 mmp_mun_weather_yr = mmp_mun_weather %>% 
   rename(tmax = tmax_avg, tmin = tmin_avg) %>%
+  mutate(tavg = (tmax + tmin)/2) %>%
   filter(month >= month_start & month <= month_end) %>%
   group_by(state, municipio, year) %>%
   summarise(prcp_y_mean=mean(prcp_ttl),
@@ -78,15 +80,34 @@ mmp_mun_weather_yr = mmp_mun_weather %>%
 As before, we need to normalize our dataset. We do so by taking the historical average over the period 1985-2014:
 ```{r}
 start_yr_hist = 1985
-end_yr_hist   = 2014
+end_yr_hist   = 2019
 
 weather_norm = mmp_mun_weather_yr %>%
   filter(year <= end_yr_hist & year >= start_yr_hist) %>%
   group_by(municipio, state) %>%
   summarise(across(ends_with("y_mean"),
-                   mean, .names = "{.col}_hist"))
+                   mean, .names = "{.col}_hist"), 
+            across(ends_with("y_mean"),
+                   sd, .names = "{.col}_sd_hist"))
 
 ```
+
+```{r}
+mmp_mun_weather_yr = mmp_mun_weather_yr %>% 
+  right_join(weather_norm, by = c("municipio", "state"))
+
+mmp_mun_weather_yr = 
+  mmp_mun_weather_yr %>% 
+  mutate(prcp_y_mean_dev = 
+           (prcp_y_mean - prcp_y_mean_hist)/prcp_y_mean_sd_hist, 
+         tavg_y_mean_dev = 
+           (tavg_y_mean - tavg_y_mean_hist)/tavg_y_mean_sd_hist, 
+         tmax_y_mean_dev = 
+           (tmax_y_mean - tmax_y_mean_hist)/tmax_y_mean_sd_hist, 
+         tmin_y_mean_dev = 
+           (tmin_y_mean - tmin_y_mean_hist)/tmin_y_mean_sd_hist)
+```
+
 
 ## Projections
 
@@ -94,19 +115,70 @@ weather_norm = mmp_mun_weather_yr %>%
 We load the weather projections:
 ```{r}
 mmp_mun_tmax_2C = read.csv(paste0(dir$weather, 
-                               "weather_mun_tmax_proj2C.csv"))
+                               "weather_mun_tmax_proj2C_1990.csv"))
 
-mmp_mun_weather_2C = mmp_mun_tmax_2C
+years = 
+  1991:2015
 
-for (var in c("tmin", "prcp")) {
-  mmp_mun_round = read.csv(paste0(dir$weather, 
-                                  "weather_mun_",var,"_proj2C.csv"))  
+for (year_round in years) {
+  mmp_mun_tmax_2C_round = 
+    read.csv(paste0(dir$weather,
+                    "weather_mun_tmax_proj2C_", 
+                    year_round, ".csv"))
   
-  mmp_mun_weather_2C = left_join(mmp_mun_weather_2C, mmp_mun_round, 
-                              by = c("state", "municipio", "year","month","n_obs"))
+  mmp_mun_tmax_2C = 
+    rbind(mmp_mun_tmax_2C, 
+        mmp_mun_tmax_2C_round) 
 }
+```
 
-rm(list = c("mmp_mun_tmax_2C", "mmp_mun_round"))
+```{r}
+mmp_mun_tmin_2C = read.csv(paste0(dir$weather, 
+                               "weather_mun_tmin_proj2C_1990.csv"))
+years = 
+  1991:2015
+
+for (year_round in years) {
+  mmp_mun_tmin_2C_round = 
+    read.csv(paste0(dir$weather, 
+                               "weather_mun_tmin_proj2C_", year_round, ".csv"))
+  
+  mmp_mun_tmin_2C = 
+    rbind(mmp_mun_tmin_2C, 
+        mmp_mun_tmin_2C_round) 
+}
+```
+
+```{r}
+mmp_mun_ppt_2C = read.csv(paste0(dir$weather, 
+                               "weather_mun_ppt_proj2C_1990.csv"))
+
+for (year_round in years) {
+  mmp_mun_ppt_2C_round = 
+    read.csv(paste0(dir$weather, 
+                               "weather_mun_ppt_proj2C_", year_round, ".csv"))
+  
+  mmp_mun_ppt_2C= 
+    rbind(mmp_mun_ppt_2C, 
+        mmp_mun_ppt_2C_round) 
+}
+```
+
+
+```{r}
+mmp_mun_weather_2C = 
+  mmp_mun_tmax_2C %>%
+  left_join(mmp_mun_tmin_2C, 
+            by = c("state", "municipio", "month", "year")) %>% 
+  left_join(mmp_mun_ppt_2C, 
+            by = c("state", "municipio", "month", "year"))
+
+mmp_mun_weather_2C = 
+  mmp_mun_weather_2C %>% 
+  mutate(tavg = (tmax + tmin)/2)
+
+rm(list = c("mmp_mun_tmax_2C", "mmp_mun_tmin_2C", "mmp_mun_ppt_2C"))
+rm(list = ls(pattern = "_round"))
 ```
 
 Since our data is yearly rather than monthly, we take the average of each variable, Furthermore, we only keep the months from April to September, the wet season for Mexican crops:
@@ -115,116 +187,127 @@ month_start = 4
 month_end   = 9
 
 mmp_mun_weather_2C = mmp_mun_weather_2C %>% 
-  rename(tmax = tmax_avg, tmin = tmin_avg) %>%
   filter(month >= month_start & month <= month_end) %>%
-  group_by(state, municipio) %>%
-  summarise(prcp_y_mean=mean(ppt_avg),
-            across(starts_with("t"), 
-                   mean, .names = "{.col}_y_mean"))
+  group_by(state, municipio, year) %>%
+  summarise(prcp_y_mean=mean(ppt),
+           across(starts_with("t"),
+                  mean, .names = "{.col}_y_mean")
+)
 ```
 
-
 We then proceed by taking the deviations for the historical mean of:
-
-- Precipitation in cl
-
-- Temperature in ºC
 
 ```{r}
 mmp_mun_weather_2C = mmp_mun_weather_2C %>% 
   right_join(weather_norm, by = c("municipio", "state"))
 
-for (i in c("prcp_y","tmax_y","tmin_y")) {
-  name1 = paste0(i,"_mean")
-  name2 = paste0(i,"_mean_hist")
-  name3 = paste0(i,"_mean_dev")
-  mmp_mun_weather_2C = cbind(mmp_mun_weather_2C,
-                          mmp_mun_weather_2C[[name1]] - mmp_mun_weather_2C[[name2]])
-  names(mmp_mun_weather_2C)[ncol(mmp_mun_weather_2C)] <- name3
-}
-
-# Modify the precipitation
-mmp_mun_weather_2C = mmp_mun_weather_2C %>%
-  mutate(prcp_y_mean_dev = prcp_y_mean_dev/10)
+mmp_mun_weather_2C = 
+  mmp_mun_weather_2C %>% 
+  mutate(prcp_y_mean_dev = 
+           (prcp_y_mean - prcp_y_mean_hist)/prcp_y_mean_sd_hist, 
+         tavg_y_mean_dev = 
+           (tavg_y_mean - tavg_y_mean_hist)/tavg_y_mean_sd_hist, 
+         tmax_y_mean_dev = 
+           (tmax_y_mean - tmax_y_mean_hist)/tmax_y_mean_sd_hist, 
+         tmin_y_mean_dev = 
+           (tmin_y_mean - tmin_y_mean_hist)/tmin_y_mean_sd_hist)
 ```
+
+```{r}
+mmp_mun_weather_yr = 
+  mmp_mun_weather_yr %>%
+  mutate(across(ends_with("_dev"), ~ .x, 
+                .names = "{.col}_true")) %>% 
+  select(municipio, state, year, ends_with("_true"))
+```
+
+```{r}
+mmp_mun_weather_all = 
+  mmp_mun_weather_2C %>%
+  left_join(mmp_mun_weather_yr, by = c("municipio", "state", "year"))
+```
+
+```{r}
+tmax_harv_plt = 
+  ggplot() +
+  geom_density(data = mmp_mun_weather_all, 
+               aes(x = tavg_y_mean_dev_true, fill = "Realized"), 
+               alpha = 0.5) +
+  geom_density(data = mmp_mun_weather_all, 
+               aes(x = tavg_y_mean_dev, fill = "Projected"), 
+               alpha = 0.5) +
+  labs(x = "Z-score", 
+       y = "Approximate Density", 
+       fill = "Temperature: ") +
+  scale_fill_manual(values = c("Realized" = "lightblue", 
+                               "Projected" = "orange")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+tmax_harv_plt + 
+  ggtitle("Maximum Temperature Distribution", 
+         subtitle = "Climate Change")
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmax_dev_2C_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+
+## Estimate effect
 
 We load our estimates of the causal effect of weather on migration. Specifically, we load the beta_hat estimated in our main analysis:
 ```{r}
-beta_hat = read.csv(paste0(dir$beta,"beta_hat.csv"))
+beta_hat = 
+  read.csv(paste0(dir$beta,"beta_hat.csv"))
 ```
 
 And its variance:
 ```{r}
-beta_var = read.csv(paste0(dir$beta,"beta_var.csv"))
+beta_var = 
+  read.csv(paste0(dir$beta,"beta_var.csv"))
 ```
 
 
 And we simply project the immigration by multiply the effect of weather on migration over the expected change on weather:
 ```{r}
-mmp_mun_weather_2C = mmp_mun_weather_2C %>% ungroup() %>%
-  mutate(imm_proj_prcp = prcp_y_mean_dev*beta_hat$beta_prcp,
-         imm_proj_tmax = tmax_y_mean_dev*beta_hat$beta_tmax,
-         imm_proj_tmin = tmin_y_mean_dev*beta_hat$beta_tmin)
-```
-
-
-Since beta is an estimate, we consider the variance of it when doing projections. Specifically, we bootstrap of potential beta's:
-```{r}
-loop_beta_2C = 
-  function(i, 
-           beta_m   = beta_hat,
-           beta_v   = beta_var) {
-  beta_round = data.frame(beta_prcp = 
-                            rnorm(1, mean = beta_m$beta_prcp, 
-                                sd = beta_v$beta_prcp))
-  j = 1
-  for (var in c("tmax", "tmin")) {
-    j = j + 1
-    name = paste0("beta_",var)
-    beta = data.frame(beta = rnorm(1, mean = beta_m[[j]], 
-                                  sd = beta_v[[j]]))
-    names(beta) <- name
-    beta_round = cbind(beta_round, beta)
-  }
-  
-    
-  mmp_mun_weather_2C_round = mmp_mun_weather_2C %>%
-  mutate(imm_proj_prcp = prcp_y_mean_dev*beta_round$beta_prcp,
-         imm_proj_tmax = tmax_y_mean_dev*beta_round$beta_tmax,
-         imm_proj_tmin = tmin_y_mean_dev*beta_round$beta_tmin) %>%
-    summarise(imm_proj_prcp = mean(imm_proj_prcp), 
-              imm_proj_tmax = mean(imm_proj_tmax),
-              imm_proj_tmin = mean(imm_proj_tmin))
-  
-
-  return(mmp_mun_weather_2C_round) 
-}
+mmp_mun_weather_all = 
+  mmp_mun_weather_all %>% ungroup() %>%
+  mutate(imm_proj_prcp = (prcp_y_mean_dev - prcp_y_mean_dev_true)*beta_hat$beta_prcp,
+         imm_proj_tmax = (tmax_y_mean_dev - tmax_y_mean_dev_true)*beta_hat$beta_tmax,
+         imm_proj_tmin = (tmin_y_mean_dev - tmin_y_mean_dev_true)*beta_hat$beta_tmin)
 ```
 
 ```{r}
-tic()
-mmp_mun_weather_2C_boot = 
-  future_lapply(1:10000, 
-  loop_beta_2C, future.seed = 8312022) %>%
-  bind_rows()
-toc()
+mmp_mun_weather_all %>%
+  summarise(imm_proj_prcp = mean(imm_proj_prcp, na.rm = T), 
+            imm_proj_tmax = mean(imm_proj_tmax, na.rm = T), 
+            imm_proj_tmin = mean(imm_proj_tmin, na.rm = T))
 ```
+
 
 And take the average of such result:
 ```{r}
-table_2C_i = mmp_mun_weather_2C %>%
-  summarise("dev_proj_Precipitation (cl)"     = mean(prcp_y_mean_dev),
-            "dev_proj_Max Temp (ºC)" = mean(tmax_y_mean_dev), 
-            "dev_proj_Min Temp (ºC)" = mean(tmin_y_mean_dev)) %>%
+table_2C_i = mmp_mun_weather_all %>%
+  summarise("dev_proj_Precipitation (Z-score)"     = 
+              mean(prcp_y_mean_dev - prcp_y_mean_dev_true, na.rm = T),
+            "dev_proj_Max Temp (Z-score)" = 
+              mean(tmax_y_mean_dev - tmax_y_mean_dev_true, na.rm = T), 
+            "dev_proj_Min Temp (Z-score)" = 
+              mean(tmin_y_mean_dev - tmin_y_mean_dev_true, na.rm = T)) %>%
   pivot_longer(cols = starts_with("dev_proj_"),
                names_to     = "Variable",
                values_to    = "Deviation",
                names_prefix = "dev_proj_")
 
-table_2C_ii = mmp_mun_weather_2C %>%
-  summarise("imm_proj_Precipitation (cl)"         = mean(imm_proj_prcp)*100,
-            "imm_proj_Max Temp (ºC)"     = mean(imm_proj_tmax)*100, 
-            "imm_proj_Min Temp (ºC)"     = mean(imm_proj_tmin)*100) %>%
+table_2C_ii = mmp_mun_weather_all %>%
+  summarise("imm_proj_Precipitation (Z-score)"         
+            = mean(imm_proj_prcp, na.rm = T)*100,
+            "imm_proj_Max Temp (Z-score)"     = 
+              mean(imm_proj_tmin, na.rm = T)*100, 
+            "imm_proj_Min Temp (Z-score)"     = 
+              mean(imm_proj_tmax, na.rm = T)*100) %>%
   pivot_longer(cols = starts_with("imm_proj_"),
                names_to     = "Variable", 
                values_to    = "Migration (p.p)", 
@@ -237,23 +320,25 @@ table_2C
 ```
 
 ```{r}
-boot_sd = mmp_mun_weather_2C_boot %>%
-  summarise("imm_proj_Precipitation (cl)" = sd(imm_proj_prcp)*100, 
-            "imm_proj_Max Temp (ºC)" = sd(imm_proj_tmax)*100,
-            "imm_proj_Min Temp (ºC)" = sd(imm_proj_tmin)*100)
-```
-
-```{r}
-table_2C_i_SD = mmp_mun_weather_2C %>%
-  summarise("dev_proj_Precipitation (cl)"     = sd(prcp_y_mean_dev),
-            "dev_proj_Max Temp (ºC)" = sd(tmax_y_mean_dev), 
-            "dev_proj_Min Temp (ºC)" = sd(tmin_y_mean_dev)) %>%
+table_2C_i_SD = mmp_mun_weather_all %>%
+  summarise("dev_proj_Precipitation (Z-score)"     = 
+              sd(prcp_y_mean_dev - prcp_y_mean_dev_true, na.rm = T),
+            "dev_proj_Max Temp (Z-score)" = 
+              sd(tmax_y_mean_dev - tmax_y_mean_dev_true, na.rm = T), 
+            "dev_proj_Min Temp (Z-score)" = 
+              sd(tmin_y_mean_dev - tmin_y_mean_dev_true, na.rm = T)) %>%
   pivot_longer(cols = starts_with("dev_proj_"),
                names_to     = "Variable",
                values_to    = "Deviation",
                names_prefix = "dev_proj_")
 
-table_2C_ii_SD = boot_sd %>%
+table_2C_ii_SD = mmp_mun_weather_all %>%
+  summarise("imm_proj_Precipitation (Z-score)"         
+            = sd(imm_proj_prcp, na.rm = T)*100,
+            "imm_proj_Max Temp (Z-score)"     = 
+              sd(imm_proj_tmax, na.rm = T)*100, 
+            "imm_proj_Min Temp (Z-score)"     = 
+              sd(imm_proj_tmin, na.rm = T)*100) %>%
   pivot_longer(cols = starts_with("imm_proj_"),
                names_to     = "Variable", 
                values_to    = "Migration (p.p)", 
@@ -265,177 +350,6 @@ table_2C_SD = table_2C_i_SD %>%
 
 table_2C_SD
 ```
-
-### 4C
-
-We do exactly the same, but for an projected increase in global temperature of 4ºC:
-```{r}
-mmp_mun_tmax_4C = read.csv(paste0(dir$weather, 
-                                  "weather_mun_tmax_proj4C.csv"))
-
-mmp_mun_weather_4C = mmp_mun_tmax_4C
-
-for (var in c("tmin", "prcp")) {
-  mmp_mun_round = read.csv(paste0(dir$weather, 
-                                  "weather_mun_",var,"_proj4C.csv"))  
-  
-  mmp_mun_weather_4C = left_join(mmp_mun_weather_4C, mmp_mun_round, 
-                                 by = c("state", "municipio", "year","month","n_obs"))
-}
-
-rm(list = c("mmp_mun_tmax_4C", "mmp_mun_round"))
-```
-
-Since our data is yearly rather than monthly, we take the average of each variable, Furthermore, we only keep the months from April to September, the wet season for Mexican crops:
-```{r}
-month_start = 4
-month_end   = 9
-
-mmp_mun_weather_4C = mmp_mun_weather_4C %>% 
-  rename(prcp_avg = ppt_avg, tmax = tmax_avg, tmin = tmin_avg) %>%
-  filter(month >= month_start & month <= month_end) %>%
-  group_by(state, municipio) %>%
-  summarise(prcp_y_mean=mean(prcp_avg),
-            across(starts_with("t"), 
-                   mean, .names = "{.col}_y_mean"))
-```
-
-
-We then proceed by taking the deviations for the historical mean:
-  
-- Precipitation in cl
-
-- Temprature in ºC
-
-```{r}
-mmp_mun_weather_4C = mmp_mun_weather_4C %>% 
-  right_join(weather_norm, by = c("municipio", "state"))
-
-for (i in c("prcp_y","tmax_y","tmin_y")) {
-  name1 = paste0(i,"_mean")
-  name2 = paste0(i,"_mean_hist")
-  name3 = paste0(i,"_mean_dev")
-  mmp_mun_weather_4C = cbind(mmp_mun_weather_4C,
-                             mmp_mun_weather_4C[[name1]] - mmp_mun_weather_4C[[name2]])
-  names(mmp_mun_weather_4C)[ncol(mmp_mun_weather_4C)] <- name3
-}
-
-# Modify the precipitation
-mmp_mun_weather_4C = mmp_mun_weather_4C %>%
-  mutate(prcp_y_mean_dev = prcp_y_mean_dev/10)
-```
-
-
-We simply project the immigration by multiply the effect of weather on immigration over the expected change on weather:
-```{r}
-mmp_mun_weather_4C = mmp_mun_weather_4C %>% ungroup() %>%
-  mutate(imm_proj_prcp = prcp_y_mean_dev*beta_hat$beta_prcp,
-         imm_proj_tmax = tmax_y_mean_dev*beta_hat$beta_tmax,
-         imm_proj_tmin = tmin_y_mean_dev*beta_hat$beta_tmin)
-```
-
-
-Since beta is an estimate, we consider the variance of it when doing projections. Specifically, we bootstrap of potential beta's:
-```{r}
-loop_beta_4C = 
-  function(i, 
-           beta_m   = beta_hat,
-           beta_v   = beta_var) {
-  beta_round = data.frame(beta_prcp = 
-                            rnorm(1, mean = beta_m$beta_prcp, 
-                                sd = beta_v$beta_prcp))
-  j = 1
-  for (var in c("tmax", "tmin")) {
-    j = j + 1
-    name = paste0("beta_",var)
-    beta = data.frame(beta = rnorm(1, mean = beta_m[[j]], 
-                                  sd = beta_v[[j]]))
-    names(beta) <- name
-    beta_round = cbind(beta_round, beta)
-  }
-  
-    
-  mmp_mun_weather_4C_round = mmp_mun_weather_4C %>%
-  mutate(imm_proj_prcp = prcp_y_mean_dev*beta_round$beta_prcp,
-         imm_proj_tmax = tmax_y_mean_dev*beta_round$beta_tmax,
-         imm_proj_tmin = tmin_y_mean_dev*beta_round$beta_tmin) %>%
-    summarise(imm_proj_prcp = mean(imm_proj_prcp), 
-              imm_proj_tmax = mean(imm_proj_tmax),
-              imm_proj_tmin = mean(imm_proj_tmin))
-  
-
-  return(mmp_mun_weather_4C_round) 
-}
-```
-
-```{r}
-tic()
-mmp_mun_weather_4C_boot = 
-  future_lapply(1:10000, 
-  loop_beta_4C, future.seed = 8312022) %>%
-  bind_rows()
-toc()
-```
-
-
-We take the average of such result:
-```{r}
-table_4C_i = mmp_mun_weather_4C %>%
-  summarise("dev_proj_Precipitation (cl)"     = mean(prcp_y_mean_dev),
-            "dev_proj_Max Temp (ºC)" = mean(tmax_y_mean_dev), 
-            "dev_proj_Min Temp (ºC)" = mean(tmin_y_mean_dev)) %>%
-  pivot_longer(cols = starts_with("dev_proj_"),
-               names_to     = "Variable",
-               values_to    = "Deviation",
-               names_prefix = "dev_proj_")
-
-table_4C_ii = mmp_mun_weather_4C %>%
-  summarise("imm_proj_Precipitation (cl)"         = mean(imm_proj_prcp)*100,
-            "imm_proj_Max Temp (ºC)"     = mean(imm_proj_tmax)*100, 
-            "imm_proj_Min Temp (ºC)"     = mean(imm_proj_tmin)*100) %>%
-  pivot_longer(cols = starts_with("imm_proj_"),
-               names_to     = "Variable", 
-               values_to    = "Migration (p.p)", 
-               names_prefix = "imm_proj_")
-
-
-table_4C = table_4C_i %>% 
-                       left_join(table_4C_ii, by = "Variable")
-table_4C
-```
-
-```{r}
-boot_sd = mmp_mun_weather_4C_boot %>%
-  summarise("imm_proj_Precipitation (cl)" = sd(imm_proj_prcp)*100, 
-            "imm_proj_Max Temp (ºC)" = sd(imm_proj_tmax)*100,
-            "imm_proj_Min Temp (ºC)" = sd(imm_proj_tmin)*100)
-```
-
-```{r}
-table_4C_i_SD = mmp_mun_weather_4C %>%
-  summarise("dev_proj_Precipitation (cl)"     = sd(prcp_y_mean_dev),
-            "dev_proj_Max Temp (ºC)" = sd(tmax_y_mean_dev), 
-            "dev_proj_Min Temp (ºC)" = sd(tmin_y_mean_dev)) %>%
-  pivot_longer(cols = starts_with("dev_proj_"),
-               names_to     = "Variable",
-               values_to    = "Deviation",
-               names_prefix = "dev_proj_")
-
-table_4C_ii_SD = boot_sd %>%
-  pivot_longer(cols = starts_with("imm_proj_"),
-               names_to     = "Variable", 
-               values_to    = "Migration (p.p)", 
-               names_prefix = "imm_proj_") 
-
-table_4C_SD = table_4C_i_SD %>% 
-                       left_join(table_4C_ii_SD, by = "Variable") %>%
-  mutate(across("Deviation":"Migration (p.p)", ~ paste0("(",round(.x,3),")")))
-
-table_4C_SD
-```
-
-
-### Both
 
 We add both results in one table:
 ```{r}
@@ -452,6 +366,247 @@ table_2C_all[c(2,4,6), 1] <- ""
 table_2C_all
 ```
 
+### 4C
+
+We load the weather projections:
+```{r}
+mmp_mun_tmax_4C = read.csv(paste0(dir$weather, 
+                                  "weather_mun_tmax_proj4C_1990.csv"))
+
+years = 
+  1991:2015
+
+for (year_round in years) {
+  mmp_mun_tmax_4C_round = 
+    read.csv(paste0(dir$weather,
+                    "weather_mun_tmax_proj4C_", 
+                    year_round, ".csv"))
+  
+  mmp_mun_tmax_4C = 
+    rbind(mmp_mun_tmax_4C, 
+          mmp_mun_tmax_4C_round) 
+}
+```
+
+```{r}
+mmp_mun_tmin_4C = read.csv(paste0(dir$weather, 
+                                  "weather_mun_tmin_proj4C_1990.csv"))
+years = 
+  1991:2015
+
+for (year_round in years) {
+  mmp_mun_tmin_4C_round = 
+    read.csv(paste0(dir$weather, 
+                    "weather_mun_tmin_proj4C_", year_round, ".csv"))
+  
+  mmp_mun_tmin_4C = 
+    rbind(mmp_mun_tmin_4C, 
+          mmp_mun_tmin_4C_round) 
+}
+```
+
+```{r}
+mmp_mun_ppt_4C = read.csv(paste0(dir$weather, 
+                                 "weather_mun_ppt_proj4C_1990.csv"))
+
+for (year_round in years) {
+  mmp_mun_ppt_4C_round = 
+    read.csv(paste0(dir$weather, 
+                    "weather_mun_ppt_proj4C_", year_round, ".csv"))
+  
+  mmp_mun_ppt_4C= 
+    rbind(mmp_mun_ppt_4C, 
+          mmp_mun_ppt_4C_round) 
+}
+```
+
+
+```{r}
+mmp_mun_weather_4C = 
+  mmp_mun_tmax_4C %>%
+  left_join(mmp_mun_tmin_4C, 
+            by = c("state", "municipio", "month", "year")) %>% 
+  left_join(mmp_mun_ppt_4C, 
+            by = c("state", "municipio", "month", "year"))
+
+mmp_mun_weather_4C = 
+  mmp_mun_weather_4C %>% 
+  mutate(tavg = (tmax + tmin)/2)
+
+rm(list = c("mmp_mun_tmax_4C", "mmp_mun_tmin_4C", "mmp_mun_ppt_4C"))
+rm(list = ls(pattern = "_round"))
+```
+
+Since our data is yearly rather than monthly, we take the average of each variable, Furthermore, we only keep the months from April to September, the wet season for Mexican crops:
+```{r}
+month_start = 4
+month_end   = 9
+
+mmp_mun_weather_4C = mmp_mun_weather_4C %>% 
+  filter(month >= month_start & month <= month_end) %>%
+  group_by(state, municipio, year) %>%
+  summarise(prcp_y_mean=mean(ppt),
+            across(starts_with("t"),
+                   mean, .names = "{.col}_y_mean")
+  )
+```
+
+We then proceed by taking the deviations for the historical mean of:
+  
+```{r}
+mmp_mun_weather_4C = mmp_mun_weather_4C %>% 
+  right_join(weather_norm, by = c("municipio", "state"))
+
+mmp_mun_weather_4C = 
+  mmp_mun_weather_4C %>% 
+  mutate(prcp_y_mean_dev = 
+           (prcp_y_mean - prcp_y_mean_hist)/prcp_y_mean_sd_hist, 
+         tavg_y_mean_dev = 
+           (tavg_y_mean - tavg_y_mean_hist)/tavg_y_mean_sd_hist, 
+         tmax_y_mean_dev = 
+           (tmax_y_mean - tmax_y_mean_hist)/tmax_y_mean_sd_hist, 
+         tmin_y_mean_dev = 
+           (tmin_y_mean - tmin_y_mean_hist)/tmin_y_mean_sd_hist)
+```
+
+```{r}
+mmp_mun_weather_yr = 
+  mmp_mun_weather_yr %>%
+  mutate(across(ends_with("_dev"), ~ .x, 
+                .names = "{.col}_true")) %>% 
+  select(municipio, state, year, ends_with("_true"))
+```
+
+```{r}
+mmp_mun_weather_all = 
+  mmp_mun_weather_4C %>%
+  left_join(mmp_mun_weather_yr, by = c("municipio", "state", "year"))
+```
+
+```{r}
+tmax_harv_plt = 
+  ggplot() +
+  geom_density(data = mmp_mun_weather_all, 
+               aes(x = tavg_y_mean_dev_true, fill = "Realized"), 
+               alpha = 0.5) +
+  geom_density(data = mmp_mun_weather_all, 
+               aes(x = tavg_y_mean_dev, fill = "Projected"), 
+               alpha = 0.5) +
+  labs(x = "Z-score", 
+       y = "Approximate Density", 
+       fill = "Temperature: ") +
+  scale_fill_manual(values = c("Realized" = "lightblue", 
+                               "Projected" = "orange")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+tmax_harv_plt + 
+  ggtitle("Maximum Temperature Distribution", 
+          subtitle = "Climate Change")
+```
+
+```{r}
+ggsave(paste0(dir$fig,"tmax_dev_4C_plt.png"), 
+       width = 7, height = 4.5)
+```
+
+## Estimate effect
+
+We load our estimates of the causal effect of weather on migration. Specifically, we load the beta_hat estimated in our main analysis:
+```{r}
+beta_hat = 
+  read.csv(paste0(dir$beta,"beta_hat.csv"))
+```
+
+And its variance:
+```{r}
+beta_var = 
+  read.csv(paste0(dir$beta,"beta_var.csv"))
+```
+
+
+And we simply project the immigration by multiply the effect of weather on migration over the expected change on weather:
+```{r}
+mmp_mun_weather_all = 
+  mmp_mun_weather_all %>% ungroup() %>%
+  mutate(imm_proj_prcp = (prcp_y_mean_dev - prcp_y_mean_dev_true)*beta_hat$beta_prcp,
+         imm_proj_tmax = (tmax_y_mean_dev - tmax_y_mean_dev_true)*beta_hat$beta_tmax,
+         imm_proj_tmin = (tmin_y_mean_dev - tmin_y_mean_dev_true)*beta_hat$beta_tmin)
+```
+
+```{r}
+mmp_mun_weather_all %>%
+  summarise(imm_proj_prcp = mean(imm_proj_prcp, na.rm = T), 
+            imm_proj_tmax = mean(imm_proj_tmax, na.rm = T), 
+            imm_proj_tmin = mean(imm_proj_tmin, na.rm = T))
+```
+
+
+And take the average of such result:
+```{r}
+table_4C_i = mmp_mun_weather_all %>%
+  summarise("dev_proj_Precipitation (Z-score)"     = 
+              mean(prcp_y_mean_dev - prcp_y_mean_dev_true, na.rm = T),
+            "dev_proj_Max Temp (Z-score)" = 
+              mean(tmax_y_mean_dev - tmax_y_mean_dev_true, na.rm = T), 
+            "dev_proj_Min Temp (Z-score)" = 
+              mean(tmin_y_mean_dev - tmin_y_mean_dev_true, na.rm = T)) %>%
+  pivot_longer(cols = starts_with("dev_proj_"),
+               names_to     = "Variable",
+               values_to    = "Deviation",
+               names_prefix = "dev_proj_")
+
+table_4C_ii = mmp_mun_weather_all %>%
+  summarise("imm_proj_Precipitation (Z-score)"         
+            = mean(imm_proj_prcp, na.rm = T)*100,
+            "imm_proj_Max Temp (Z-score)"     = 
+              mean(imm_proj_tmin, na.rm = T)*100, 
+            "imm_proj_Min Temp (Z-score)"     = 
+              mean(imm_proj_tmax, na.rm = T)*100) %>%
+  pivot_longer(cols = starts_with("imm_proj_"),
+               names_to     = "Variable", 
+               values_to    = "Migration (p.p)", 
+               names_prefix = "imm_proj_")
+
+
+table_4C = table_4C_i %>% 
+  left_join(table_4C_ii, by = "Variable")
+table_4C
+```
+
+```{r}
+table_4C_i_SD = mmp_mun_weather_all %>%
+  summarise("dev_proj_Precipitation (Z-score)"     = 
+              sd(prcp_y_mean_dev - prcp_y_mean_dev_true, na.rm = T),
+            "dev_proj_Max Temp (Z-score)" = 
+              sd(tmax_y_mean_dev - tmax_y_mean_dev_true, na.rm = T), 
+            "dev_proj_Min Temp (Z-score)" = 
+              sd(tmin_y_mean_dev - tmin_y_mean_dev_true, na.rm = T)) %>%
+  pivot_longer(cols = starts_with("dev_proj_"),
+               names_to     = "Variable",
+               values_to    = "Deviation",
+               names_prefix = "dev_proj_")
+
+table_4C_ii_SD = mmp_mun_weather_all %>%
+  summarise("imm_proj_Precipitation (Z-score)"         
+            = sd(imm_proj_prcp, na.rm = T)*100,
+            "imm_proj_Max Temp (Z-score)"     = 
+              sd(imm_proj_tmax, na.rm = T)*100, 
+            "imm_proj_Min Temp (Z-score)"     = 
+              sd(imm_proj_tmin, na.rm = T)*100) %>%
+  pivot_longer(cols = starts_with("imm_proj_"),
+               names_to     = "Variable", 
+               values_to    = "Migration (p.p)", 
+               names_prefix = "imm_proj_")
+
+table_4C_SD = table_4C_i_SD %>% 
+  left_join(table_4C_ii_SD, by = "Variable") %>%
+  mutate(across("Deviation":"Migration (p.p)", ~ paste0("(",round(.x,3),")")))
+
+table_4C_SD
+```
+
+We add both results in one table:
 ```{r}
 table_4C_string = table_4C %>% 
   mutate(across("Deviation":"Migration (p.p)", 
@@ -465,6 +620,9 @@ table_4C_all =
 table_4C_all[c(2,4,6), 1] <- ""
 table_4C_all
 ```
+
+
+### Both
 
 ```{r}
 tab_both =xtable(cbind(table_2C_all,table_4C_all[,2:3]), 

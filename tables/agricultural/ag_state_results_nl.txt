@@ -1,0 +1,40 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccccccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variables: & \multicolumn{4}{c}{Log (Harv Area) - Ha} & \multicolumn{4}{c}{Log (Corn Prod) - Gr, Ton}\\
+   Model:                        & (1)             & (2)             & (3)             & (4)             & (5)             & (6)             & (7)             & (8)\\  
+   \midrule
+   \emph{Variables}\\
+   Dev Precipiation (Z-score)    & 0.0488$^{***}$  &                 &                 &                 & 0.0527$^{***}$  &                 &                 &   \\   
+                                 & (0.0046)        &                 &                 &                 & (0.0056)        &                 &                 &   \\   
+   Dev Precipiation Sq (Z-score) & -0.0084$^{***}$ &                 &                 &                 & -0.0063$^{***}$ &                 &                 &   \\   
+                                 & (0.0019)        &                 &                 &                 & (0.0024)        &                 &                 &   \\   
+   Dev Avg Temp (Z-score)        &                 & -0.0319$^{***}$ &                 &                 &                 & -0.0431$^{***}$ &                 &   \\   
+                                 &                 & (0.0050)        &                 &                 &                 & (0.0068)        &                 &   \\   
+   Dev Avg Temp Sq (Z-score)     &                 & -0.0098$^{***}$ &                 &                 &                 & -0.0068$^{**}$  &                 &   \\   
+                                 &                 & (0.0023)        &                 &                 &                 & (0.0032)        &                 &   \\   
+   Dev Max Temp (Z-score)        &                 &                 & -0.0184$^{***}$ &                 &                 &                 & -0.0212$^{***}$ &   \\   
+                                 &                 &                 & (0.0045)        &                 &                 &                 & (0.0063)        &   \\   
+   Dev Max Temp Sq (Z-score)     &                 &                 & -0.0051$^{**}$  &                 &                 &                 & -0.0011         &   \\   
+                                 &                 &                 & (0.0023)        &                 &                 &                 & (0.0031)        &   \\   
+   Dev Min Temp (Z-score)        &                 &                 &                 & -0.0146$^{***}$ &                 &                 &                 & -0.0228$^{***}$\\   
+                                 &                 &                 &                 & (0.0049)        &                 &                 &                 & (0.0064)\\   
+   Dev Min Temp Sq (Z-score)     &                 &                 &                 & -0.0080$^{***}$ &                 &                 &                 & -0.0053$^{*}$\\   
+                                 &                 &                 &                 & (0.0021)        &                 &                 &                 & (0.0030)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   id                            & Yes             & Yes             & Yes             & Yes             & Yes             & Yes             & Yes             & Yes\\  
+   year                          & Yes             & Yes             & Yes             & Yes             & Yes             & Yes             & Yes             & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                  & 32,847          & 32,847          & 32,847          & 32,847          & 31,998          & 31,998          & 31,998          & 31,998\\  
+   Adjusted R$^2$                & 0.90519         & 0.90476         & 0.90460         & 0.90456         & 0.89561         & 0.89532         & 0.89511         & 0.89511\\  
+   \midrule \midrule
+   \multicolumn{9}{l}{\emph{Clustered (id) standard-errors in parentheses}}\\
+   \multicolumn{9}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

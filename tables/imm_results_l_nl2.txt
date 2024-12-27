@@ -1,0 +1,40 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{Legal Migrant}\\
+   Model:                                 & (1)      & (2)      & (3)      & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   Dev Precipitation (Z-score, t-1)       & -0.0005  &          &          &   \\   
+                                          & (0.0004) &          &          &   \\   
+   Dev Precipitation $>$ 0 (Z-score, t-1) & 0.0004   &          &          &   \\   
+                                          & (0.0005) &          &          &   \\   
+   Dev Avg Temp (Z-score, t-1)            &          & -0.0007  &          &   \\   
+                                          &          & (0.0005) &          &   \\   
+   Dev Avg Temp $>$ 0 (Z-score, t-1)      &          & 0.0008   &          &   \\   
+                                          &          & (0.0006) &          &   \\   
+   Dev Max Temp (Z-score, t-1)            &          &          & -0.0003  &   \\   
+                                          &          &          & (0.0004) &   \\   
+   Dev Max Temp $>$ 0 (Z-score, t-1)      &          &          & 0.0004   &   \\   
+                                          &          &          & (0.0005) &   \\   
+   Dev Min Temp (Z-score, t-1)            &          &          &          & $7.41\times 10^{-5}$\\    
+                                          &          &          &          & (0.0005)\\   
+   Dev Min Temp $>$ 0 (Z-score, t-1)      &          &          &          & -0.0002\\   
+                                          &          &          &          & (0.0007)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   id                                     & Yes      & Yes      & Yes      & Yes\\  
+   year                                   & Yes      & Yes      & Yes      & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                           & 112,587  & 112,587  & 112,587  & 112,587\\  
+   Adjusted R$^2$                         & 0.41782  & 0.41782  & 0.41781  & 0.41781\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (commun) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

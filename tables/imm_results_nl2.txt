@@ -1,0 +1,40 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{Migrant}\\
+   Model:                                 & (1)             & (2)            & (3)            & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   Dev Precipitation (Z-score, t-1)       & -0.0028$^{***}$ &                &                &   \\   
+                                          & (0.0009)        &                &                &   \\   
+   Dev Precipitation $>$ 0 (Z-score, t-1) & 0.0033$^{***}$  &                &                &   \\   
+                                          & (0.0011)        &                &                &   \\   
+   Dev Avg Temp (Z-score, t-1)            &                 & 0.0008         &                &   \\   
+                                          &                 & (0.0009)       &                &   \\   
+   Dev Avg Temp $>$ 0 (Z-score, t-1)      &                 & 0.0034$^{***}$ &                &   \\   
+                                          &                 & (0.0012)       &                &   \\   
+   Dev Max Temp (Z-score, t-1)            &                 &                & 0.0021$^{***}$ &   \\   
+                                          &                 &                & (0.0007)       &   \\   
+   Dev Max Temp $>$ 0 (Z-score, t-1)      &                 &                & 0.0020$^{*}$   &   \\   
+                                          &                 &                & (0.0011)       &   \\   
+   Dev Min Temp (Z-score, t-1)            &                 &                &                & 0.0031$^{**}$\\   
+                                          &                 &                &                & (0.0014)\\   
+   Dev Min Temp $>$ 0 (Z-score, t-1)      &                 &                &                & 0.0003\\   
+                                          &                 &                &                & (0.0017)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   id                                     & Yes             & Yes            & Yes            & Yes\\  
+   year                                   & Yes             & Yes            & Yes            & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                           & 112,588         & 112,588        & 112,588        & 112,588\\  
+   Adjusted R$^2$                         & 0.25261         & 0.25315        & 0.25304        & 0.25294\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (commun) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

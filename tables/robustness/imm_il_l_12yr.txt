@@ -4,25 +4,25 @@
 \begin{tabular}{lcccccccc}
    \tabularnewline \midrule \midrule
    Dependent Variables: & \multicolumn{4}{c}{Illegal Migrant} & \multicolumn{4}{c}{Legal Migrant}\\
-   Model:                      & (1)            & (2)            & (3)            & (4)            & (5)                     & (6)      & (7)                    & (8)\\  
+   Model:                           & (1)            & (2)            & (3)            & (4)            & (5)           & (6)                    & (7)                   & (8)\\  
    \midrule
    \emph{Variables}\\
-   Dev Precipitation (cl, t-1) & -0.0004$^{**}$ &                &                &                & $-6.91\times 10^{-5}$   &          &                        &   \\   
-                               & (0.0002)       &                &                &                & ($6.07\times 10^{-5}$)  &          &                        &   \\   
-   Dev Avg Temp (ºC, t-1)      &                & 0.0062$^{***}$ &                &                &                         & -0.0002  &                        &   \\   
-                               &                & (0.0008)       &                &                &                         & (0.0003) &                        &   \\   
-   Dev Max Temp (ºC, t-1)      &                &                & 0.0040$^{***}$ &                &                         &          & $-1.42\times 10^{-5}$  &   \\   
-                               &                &                & (0.0006)       &                &                         &          & (0.0002)               &   \\   
-   Dev Min Temp (ºC, t-1)      &                &                &                & 0.0046$^{***}$ &                         &          &                        & -0.0002\\   
-                               &                &                &                & (0.0008)       &                         &          &                        & (0.0004)\\   
+   Dev Precipitation (Z-score, t-1) & -0.0007$^{**}$ &                &                &                & -0.0003$^{*}$ &                        &                       &   \\   
+                                    & (0.0004)       &                &                &                & (0.0002)      &                        &                       &   \\   
+   Dev Avg Temp (Z-score, t-1)      &                & 0.0032$^{***}$ &                &                &               & $-8.02\times 10^{-5}$  &                       &   \\   
+                                    &                & (0.0004)       &                &                &               & (0.0002)               &                       &   \\   
+   Dev Max Temp (Z-score, t-1)      &                &                & 0.0032$^{***}$ &                &               &                        & $1.48\times 10^{-5}$  &   \\   
+                                    &                &                & (0.0004)       &                &               &                        & (0.0002)              &   \\   
+   Dev Min Temp (Z-score, t-1)      &                &                &                & 0.0032$^{***}$ &               &                        &                       & $-2.83\times 10^{-5}$\\    
+                                    &                &                &                & (0.0005)       &               &                        &                       & (0.0002)\\   
    \midrule
    \emph{Fixed-effects}\\
-   id                          & Yes            & Yes            & Yes            & Yes            & Yes                     & Yes      & Yes                    & Yes\\  
-   year                        & Yes            & Yes            & Yes            & Yes            & Yes                     & Yes      & Yes                    & Yes\\  
+   id                               & Yes            & Yes            & Yes            & Yes            & Yes           & Yes                    & Yes                   & Yes\\  
+   year                             & Yes            & Yes            & Yes            & Yes            & Yes           & Yes                    & Yes                   & Yes\\  
    \midrule
    \emph{Fit statistics}\\
-   Observations                & 143,220        & 143,220        & 143,220        & 143,220        & 143,220                 & 143,220  & 143,220                & 143,220\\  
-   Adjusted R$^2$              & 0.16599        & 0.16670        & 0.16655        & 0.16633        & 0.40420                 & 0.40420  & 0.40419                & 0.40420\\  
+   Observations                     & 131,774        & 131,774        & 131,774        & 131,774        & 131,774       & 131,774                & 131,774               & 131,774\\  
+   Adjusted R$^2$                   & 0.16737        & 0.16809        & 0.16794        & 0.16788        & 0.41748       & 0.41747                & 0.41747               & 0.41747\\  
    \midrule \midrule
    \multicolumn{9}{l}{\emph{Clustered (commun) standard-errors in parentheses}}\\
    \multicolumn{9}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
