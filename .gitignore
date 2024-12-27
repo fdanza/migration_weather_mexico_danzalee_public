@@ -12,9 +12,7 @@ confidential
 0.5_weather_mun_prcp_daymet.Rmd
 0.6_weather_mun_tmax_daymet.Rmd
 0.7_weather_mun_tmin_daymet.Rmd
-0.8_weather_mun_prcp_2100_terra.Rmd
-0.9_weather_mun_tmax_2100_terra.Rmd
-0.10_weather_mun_tmin_2100_terra.Rmd
+0.8_weather_mun_2100_terra.Rmd
 mex_admbnda_govmex_20210618_SHP
 Presentations
 Previous
