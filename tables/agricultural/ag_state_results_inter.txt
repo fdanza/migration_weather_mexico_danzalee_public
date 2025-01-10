@@ -3,28 +3,22 @@
 \centering
 \begin{tabular}{lcc}
    \tabularnewline \midrule \midrule
-   Dependent Variables:                    & Log (Harv Area) - Ha & Log (Corn Prod) - Gr, Ton\\  
-   Model:                                  & (1)                  & (2)\\  
+   Dependent Variables:       & Log (Harv Area) - Ha & Log (Corn Prod) - Gr, Ton\\  
+   Model:                     & (1)                  & (2)\\  
    \midrule
    \emph{Variables}\\
-   Dev Precipiation                        & 0.0468$^{***}$       & 0.0502$^{***}$\\   
-                                           & (0.0048)             & (0.0060)\\   
-   Dev Avg Temp                            & -0.0222$^{***}$      & -0.0326$^{***}$\\   
-                                           & (0.0051)             & (0.0070)\\   
-   Dev Precipiation Sq                     & -0.0086$^{***}$      & -0.0069$^{***}$\\   
-                                           & (0.0020)             & (0.0025)\\   
-   Dev Avg Temp Sq                         & -0.0096$^{***}$      & -0.0070$^{**}$\\   
-                                           & (0.0023)             & (0.0032)\\   
-   Dev Precipiation $\times$ Dev Avg Temp  & -0.0046              & -0.0061\\   
-                                           & (0.0031)             & (0.0041)\\   
+   Dev Precipiation (Z-score) & 0.0412$^{***}$       & 0.0449$^{***}$\\   
+                              & (0.0042)             & (0.0053)\\   
+   Dev Avg Temp (Z-score)     & -0.0251$^{***}$      & -0.0351$^{***}$\\   
+                              & (0.0050)             & (0.0069)\\   
    \midrule
    \emph{Fixed-effects}\\
-   id                                      & Yes                  & Yes\\  
-   year                                    & Yes                  & Yes\\  
+   id                         & Yes                  & Yes\\  
+   year                       & Yes                  & Yes\\  
    \midrule
    \emph{Fit statistics}\\
-   Observations                            & 32,847               & 31,998\\  
-   Adjusted R$^2$                          & 0.90536              & 0.89579\\  
+   Observations               & 32,847               & 31,998\\  
+   Adjusted R$^2$             & 0.90525              & 0.89575\\  
    \midrule \midrule
    \multicolumn{3}{l}{\emph{Clustered (id) standard-errors in parentheses}}\\
    \multicolumn{3}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\

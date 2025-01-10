@@ -595,14 +595,14 @@ etable(c(regression_list_tot[1:4],regression_list_corn[1:4]),
 
 ## Third specification
 ```{r}
-formula = "log(harvested_ha) ~ prcp_y_mean_dev*tavg_y_mean_dev + prcp_y_mean_dev_2 + tavg_y_mean_dev_2  | id + year"
+formula = "log(harvested_ha) ~ prcp_y_mean_dev + tavg_y_mean_dev  | id + year"
 regression = feols(as.formula(formula), 
       data = mmp_state_ag, se = 'cluster', cluster = "id")
 regression_list = list(regression)
 
 
 for (i in c("prod_corn_ton_gr")) {
-formula = paste0("log(", i, ")", " ~ prcp_y_mean_dev*tavg_y_mean_dev + prcp_y_mean_dev_2 + tavg_y_mean_dev_2",
+formula = paste0("log(", i, ")", " ~ prcp_y_mean_dev + tavg_y_mean_dev ",
                  "| id + year")
 regression = feols(as.formula(formula), 
       data = mmp_state_ag, se = 'cluster', cluster = "id")
@@ -613,14 +613,14 @@ regression_list = c(regression_list,list(regression))
 ```{r}
 setFixest_dict(c(`log(harvested_ha)` = "Log (Harv Area) - Ha",
                  `log(prod_corn_ton_gr)` = "Log (Corn Prod) - Gr, Ton",
-                 prcp_y_mean_dev   = "Dev Precipiation", 
-                 tavg_y_mean_dev   = "Dev Avg Temp",
-                 tmax_y_mean_dev   = "Dev Max Temp",
-                 tmin_y_mean_dev   = "Dev Min Temp", 
-                 prcp_y_mean_dev_2   = "Dev Precipiation Sq", 
-                 tavg_y_mean_dev_2   = "Dev Avg Temp Sq",
-                 tmax_y_mean_dev_2   = "Dev Max Temp Sq",
-                 tmin_y_mean_dev_2   = "Dev Min Temp Sq"))
+                 prcp_y_mean_dev   = "Dev Precipiation (Z-score)", 
+                 tavg_y_mean_dev   = "Dev Avg Temp (Z-score)",
+                 tmax_y_mean_dev   = "Dev Max Temp (Z-score)",
+                 tmin_y_mean_dev   = "Dev Min Temp (Z-score)", 
+                 prcp_y_mean_dev_2   = "Dev Precipiation Sq (Z-score)", 
+                 tavg_y_mean_dev_2   = "Dev Avg Temp Sq (Z-score)",
+                 tmax_y_mean_dev_2   = "Dev Max Temp Sq (Z-score)",
+                 tmin_y_mean_dev_2   = "Dev Min Temp Sq (Z-score)"))
 
 etable(regression_list[1:4], 
        file = paste0(dir$results,"ag_state_results_inter.txt"),

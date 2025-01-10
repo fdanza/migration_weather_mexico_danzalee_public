@@ -1122,12 +1122,12 @@ etable(reg_list_imm_l2[1:4])
 
 We do the same analysis interacting temperature with precipitation:
 ```{r}
-formula = "M_U ~ prec_y_mean_dev_lag*temp_avg_y_mean_dev_lag | id + year"
+formula = "M_U ~ prec_y_mean_dev_lag + temp_avg_y_mean_dev_lag | id + year"
 reg_list_imm = list(feols(as.formula(formula), 
       data = mmp_com_weather, se = 'cluster', cluster = "commun"))
 
 for (i in c("IL", "L")) {
-formula = paste0("M_U", i, " ~ prec_y_mean_dev_lag*temp_avg_y_mean_dev_lag ",
+formula = paste0("M_U", i, " ~ prec_y_mean_dev_lag + temp_avg_y_mean_dev_lag ",
                  "| id + year")
   
 reg_round = feols(as.formula(formula), 
@@ -1142,8 +1142,8 @@ And we summaries all the results in the following table:
 setFixest_dict(c(M_U = "Migrant",
                  M_UIL = "Illegal Migrant", 
                  M_UL = "Legal Migrant",
-                 prec_y_mean_dev_lag     = "Dev Prec (t-1)", 
-                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (t-1)"))
+                 prec_y_mean_dev_lag     = "Dev Prec (Z-score, t-1)", 
+                 temp_avg_y_mean_dev_lag = "Dev Avg Temp (Z-score, t-1)"))
 
 etable(reg_list_imm[1:3],
          file = paste0(dir$results,"imm_inter_results.txt"), 
